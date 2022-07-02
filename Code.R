@@ -1,3 +1,5 @@
+################BACTERIOME############
+
 library(phyloseq)
 library(decontam)
 library(vegan)
@@ -135,7 +137,7 @@ sum(sample_sums(bac_sperm)) # total reads = 2,456,177
 mean(sample_sums(bac_sperm)) # 28896.2 ##29868.77
 median(sample_sums(bac_sperm)) # 28151 reads ##29237.5
 
-# Rarefaction anlaysis 
+# Rarefaction analysis 
 sam.data <- data.frame(bac_sperm@sam_data)
 bOTU.table <- bac_sperm@otu_table
 S <- specnumber(t(bOTU.table)) # observed number of species
@@ -283,6 +285,134 @@ sig.crop <- left_join(sig.otus, taxonomy.bac, by = "OTU")
 
 sig.crop$cropaffected <- ifelse(sig.crop$index == 1, "Soybean", 
                                 ifelse(sig.crop$index == 2, "Cotton", "Bulk Soil"))
+
+##Community Composition acccording to Microbiome Package##
+library(microbiome)
+# Make sure we use functions from correct package
+transform <- microbiome::transform
+
+pseq <- transform(bac.css.norm, "compositional")
+pseq <- aggregate_rare(pseq, level = "Genus", detection = 1/100, prevalence = 2/100)
+
+# Pick sample subset
+library(phyloseq)
+
+install.packages("hrbrthemes", repos = c("https://cinc.rud.is", "https://cloud.r-project.org/"))
+library(hrbrthemes)
+install.packages("gcookbook")
+library(gcookbook)
+library(tidyverse)
+p <- plot_composition(pseq,
+                      taxonomic.level = "Genus",
+                      sample.sort = "Crop",
+                      x.label = "Crop") +
+  scale_fill_brewer("Genera", palette = "Paired") +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_y_percent() +
+  labs(x = "Samples", y = "Relative abundance (%)",
+       title = "Relative abundance data") + 
+  theme_ipsum(grid="Y") +
+  theme(axis.text.x = element_text(angle=90, hjust=1),
+        legend.text = element_text(face = "italic"))
+print(p)  
+
+#Remove OTUs not greater than 10 reads
+keepTaxa = apply(X = as(otu_table(bac.css.norm), "matrix") > 10, MARGIN = 1, FUN = sum) >= 10
+bac.prop = prune_taxa(keepTaxa, bac.css.norm)
+
+library(data.table)
+# agglomerate taxa at Genus level
+glom <- tax_glom(bac.prop, taxrank = 'Class')
+# create dataframe from phyloseq object
+dat <- data.table(psmelt(glom))
+# convert Phylum to a character vector from a factor 
+dat$Label <- as.character(dat$Class)
+
+rel.abund.fungi <- dat %>%
+  group_by(Class) %>%
+  nest() %>%
+  mutate(mean.relabund = purrr::map(data,~mean(.$Abundance*100))) %>%
+  mutate(SE.relabund = purrr::map(data,~sd(.$Abundance*100)/sqrt(length(.$Abundance*100)))) %>%
+  unnest(mean.relabund, SE.relabund) %>%
+  unnest()
+
+rel.abund.fungi <- as.data.frame(rel.abund.fungi)
+rel.abund.fungi$Label <- as.character(rel.abund.fungi$Class)
+
+rel.abund.fungi$Label <- ifelse(rel.abund.fungi$mean.relabund <= 10, "Other", rel.abund.fungi$Class)
+
+fungi.colors <- c("#c6dbef","#9ecae1","#6baed6","#3182bd","#08519c",
+                  "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#005a32",
+                  "#fdd0a2", "#fdae6b", "#fd8d3c", "#f16913", "#d94801", "#8c2d04",
+                  "#dadaeb", "#bcbddc", "#9e9ac8", "#807dba", "#6a51a3", "#4a1486",
+                  "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#99000d",
+                  "#d9d9d9", "#bdbdbd", "#969696", "#737373", "#525252", "#252525")
+
+
+
+ggplot(rel.abund.fungi, aes(x = Sample, y = Abundance, fill = Class)) + 
+  facet_wrap(Time.Point~Crop, nrow = 1, scales = "free_x", strip.position="bottom") +
+  geom_bar(stat = "identity", alpha = 0.9) +
+  theme_minimal() +
+  ylab("Relative Abundance (%)") +
+  xlab("") +
+  scale_fill_manual(values = sample(fungi.colors)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(fill = "Label") +
+  theme(axis.text.x = element_blank(),
+        legend.text = element_text(size = 10),
+        legend.key = element_blank(),
+        legend.title = element_text(size = 10),
+        legend.position = "right", 
+        strip.text.x = element_text(size = 10, vjust=2),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+
+##Rishi's'
+
+#Taxonomic classification 
+
+genus_colors <-c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", 
+                 "#FB9A99", "#E31A1C", "#FDBF6F", "#00FFFF", 
+                 "#FF7F00", "#CAB2D6","#8A7C64","#652926",
+                 "#6A3D9A", "#B15928", "#FFC000")
+
+
+all_genus <- tax_glom(bac.css.norm, "Genus", NArm = TRUE)
+# Get top 15 genera
+top15_genera <- names(sort(taxa_sums(all_genus), decreasing=TRUE))[1:15]
+# Transform Taxa counts to relative abundance
+all_genus_relabun <- transform_sample_counts(all_genus, function(OTU) OTU/sum(OTU) * 100)
+# Extract the top 15 taxa 
+all_genus_top15 <- prune_taxa(top15_genera, all_genus_relabun)
+# Convert into dataframe
+taxa_abundance_table_genus <- psmelt(all_genus_top15)
+#Plot top 15 genus
+T= StackedBarPlot_genus_endo <- taxa_abundance_table_genus %>% 
+  ggplot(aes(x =Crop, y = Abundance, fill = Genus)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(x = "Sample",
+       y = "Relative Abundance",
+       title = "Genus Relative Abundance (Spermosphere)") +
+  facet_grid(~ Time.Point, scales = "free") +
+  theme(
+    axis.text.x = element_text(size = 10, vjust = 0.5, hjust = 1),
+    axis.text.y = element_text(size = 12),
+    legend.text = element_text(size = 14),
+    strip.text = element_text(size = 12))+
+  scale_fill_manual(values=genus_colors)
+
+#To put the samples in a specific order i first created a new order
+newSTorder = c("CAB","CAM","CAE","COM","COE","IAB","IAM","IAE","IOM","IOE")
+#Then convert the x axis factor into character vector
+T$data$IET <- factor(T$data$IET)
+
+#Then change the character vector 
+T$data$IET <- factor(T$data$IET, levels=newSTorder)
+
+print(T)
+ggsave("taxonomy1.pdf",width = 15, height = 7, units="in", dpi=700)
+
 
 bar.chart.sig <- sig.crop %>%
   group_by(cropaffected, Order) %>%
