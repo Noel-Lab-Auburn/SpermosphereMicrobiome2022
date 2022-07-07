@@ -316,71 +316,25 @@ p <- plot_composition(pseq,
         legend.text = element_text(face = "italic"))
 print(p)  
 
+##COmmunity Composition with psmelt
+
 #Remove OTUs not greater than 10 reads
 keepTaxa = apply(X = as(otu_table(bac.css.norm), "matrix") > 10, MARGIN = 1, FUN = sum) >= 10
 bac.prop = prune_taxa(keepTaxa, bac.css.norm)
 
-library(data.table)
-# agglomerate taxa at Genus level
+
 glom <- tax_glom(bac.prop, taxrank = 'Class')
-# create dataframe from phyloseq object
-dat <- data.table(psmelt(glom))
-# convert Phylum to a character vector from a factor 
-dat$Label <- as.character(dat$Class)
 
-rel.abund.fungi <- dat %>%
-  group_by(Class) %>%
-  nest() %>%
-  mutate(mean.relabund = purrr::map(data,~mean(.$Abundance*100))) %>%
-  mutate(SE.relabund = purrr::map(data,~sd(.$Abundance*100)/sqrt(length(.$Abundance*100)))) %>%
-  unnest(mean.relabund, SE.relabund) %>%
-  unnest()
-
-rel.abund.fungi <- as.data.frame(rel.abund.fungi)
-rel.abund.fungi$Label <- as.character(rel.abund.fungi$Class)
-
-rel.abund.fungi$Label <- ifelse(rel.abund.fungi$mean.relabund <= 10, "Other", rel.abund.fungi$Class)
-
-fungi.colors <- c("#c6dbef","#9ecae1","#6baed6","#3182bd","#08519c",
-                  "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#005a32",
-                  "#fdd0a2", "#fdae6b", "#fd8d3c", "#f16913", "#d94801", "#8c2d04",
-                  "#dadaeb", "#bcbddc", "#9e9ac8", "#807dba", "#6a51a3", "#4a1486",
-                  "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#99000d",
-                  "#d9d9d9", "#bdbdbd", "#969696", "#737373", "#525252", "#252525")
-
-
-
-ggplot(rel.abund.fungi, aes(x = Sample, y = Abundance, fill = Class)) + 
-  facet_wrap(Time.Point~Crop, nrow = 1, scales = "free_x", strip.position="bottom") +
-  geom_bar(stat = "identity", alpha = 0.9) +
-  theme_minimal() +
-  ylab("Relative Abundance (%)") +
-  xlab("") +
-  scale_fill_manual(values = sample(fungi.colors)) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(fill = "Label") +
-  theme(axis.text.x = element_blank(),
-        legend.text = element_text(size = 10),
-        legend.key = element_blank(),
-        legend.title = element_text(size = 10),
-        legend.position = "right", 
-        strip.text.x = element_text(size = 10, vjust=2),
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank())
-
-
-##Rishi's'
-
-#Taxonomic classification 
 
 genus_colors <-c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", 
                  "#FB9A99", "#E31A1C", "#FDBF6F", "#00FFFF", 
                  "#FF7F00", "#CAB2D6","#8A7C64","#652926",
                  "#6A3D9A", "#B15928", "#FFC000")
 
-
-all_genus <- tax_glom(bac.css.norm, "Genus", NArm = TRUE)
+# agglomerate taxa at Genus level
+all_genus <- tax_glom(bac.prop, "Genus", NArm = TRUE)
 # Get top 15 genera
-top15_genera <- names(sort(taxa_sums(all_genus), decreasing=TRUE))[1:15]
+top15_genera <- names(sort(taxa_sums(all_genus), decreasing=TRUE))[1:20]
 # Transform Taxa counts to relative abundance
 all_genus_relabun <- transform_sample_counts(all_genus, function(OTU) OTU/sum(OTU) * 100)
 # Extract the top 15 taxa 
@@ -402,87 +356,13 @@ T= StackedBarPlot_genus_endo <- taxa_abundance_table_genus %>%
     strip.text = element_text(size = 12))+
   scale_fill_manual(values=genus_colors)
 
-#To put the samples in a specific order i first created a new order
-newSTorder = c("CAB","CAM","CAE","COM","COE","IAB","IAM","IAE","IOM","IOE")
-#Then convert the x axis factor into character vector
-T$data$IET <- factor(T$data$IET)
+#To put the samples in a specific order (according to time-point)
 
-#Then change the character vector 
-T$data$IET <- factor(T$data$IET, levels=newSTorder)
+T$data$Time.Point <- factor(T$data$Time.Point, c("0","6","12","18"))
 
 print(T)
+
 ggsave("taxonomy1.pdf",width = 15, height = 7, units="in", dpi=700)
-
-
-bar.chart.sig <- sig.crop %>%
-  group_by(cropaffected, Order) %>%
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) %>%
-  arrange(-freq)
-
-bar.chart.sig$category <- ifelse(bar.chart.sig$freq < 0.001, "Other", bar.chart.sig$Order)
-
-bar.chart.sig %>%
-  subset(bar.chart.sig$cropaffected %in% c("Cotton", "Soybean")) %>%
-  ggplot(aes(x = cropaffected, fill = category)) + 
-  geom_bar(position = "fill") +
-  scale_fill_manual(values= c(hex_values, manualcolors))
-
-
-ps.rel = transform_sample_counts(bac.css.norm, function(x) x/sum(x))# Transform to rel. abundance
-#glom <- tax_glom(ps.rel, taxrank = 'Order', NArm = FALSE)
-physeq.glom <- psmelt(ps.rel)                                        # Melt to long format
-filter(Abundance > 0.01)                       # Filter out low abundance taxa
-
-
-phylum_colors <- c(
-  "#CBD588", "#5F7FC7", "orange","#DA5724", "#508578", "#CD9BCD",
-  "#AD6F3B", "#673770","#D14285", "#652926", "#C84248", 
-  "#8569D5", "#5E738F","#D1A33D", "#8A7C64", "#599861"
-)
-
-# Plot 
-ggplot(physeq.glom, aes(x = Crop, y = Abundance, fill = Family)) + 
-  geom_bar(stat = "identity") + #without this, all bars are plotted on each other
-  scale_fill_manual(values = c(phylum_colors, c25, hex_values, manualcolors)) +
-  theme_classic() +
-  # Remove x axis title
-  theme(legend.position="bottom") + 
-  ylab("Relative Abundance (Phyla > 1%)") +
-  scale_y_continuous(labels = scales::percent) + 
-  coord_flip() #used to flip plots
-
-
-##For enough colors
-library(microshades)
-hex_values <-c(microshades_palette("micro_orange",5, lightest = FALSE), 
-               microshades_palette("micro_blue",5, lightest = FALSE), 
-               microshades_palette("micro_purple",5, lightest = FALSE), microshades_palette("micro_gray", 5, lightest = FALSE), microshades_palette("micro_brown",5, lightest = FALSE) ,microshades_palette("micro_green",5, lightest = FALSE)) 
-
-manualcolors<-c('black','forestgreen', 'red2', 'orange', 'cornflowerblue', 
-                'magenta', 'darkolivegreen4', 'indianred1', 'tan4', 'darkblue', 
-                'mediumorchid1','firebrick4',  'yellowgreen', 'lightsalmon', 'tan3',
-                "tan1",'darkgray', 'wheat4', '#DDAD4B', 'chartreuse', 
-                'seagreen1', 'moccasin', 'mediumvioletred', 'seagreen','cadetblue1',
-                "darkolivegreen1" ,"tan2" ,   "tomato3" , "#7CE3D8","gainsboro")
-
-
-##or
-c25 <- c(
-  "dodgerblue2", "#E31A1C", # red
-  "green4",
-  "#6A3D9A", # purple
-  "#FF7F00", # orange
-  "black", "gold1",
-  "skyblue2", "#FB9A99", # lt pink
-  "palegreen2",
-  "#CAB2D6", # lt purple
-  "#FDBF6F", # lt orange
-  "gray70", "khaki2",
-  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
-  "darkturquoise", "green1", "yellow4", "yellow3",
-  "darkorange4", "brown"
-)
 
 
 # Core - abundance occupancy modeling
@@ -587,8 +467,9 @@ core.prioritizing <- function(phyloseq.object){
 }
 
 bac.no.norm.soybean <- bac_sperm %>% 
-  subset_samples(Crop == "Soybean" & Code != "S185_86" & Time.Point %in% c("6", "12", "18")) %>% 
+  subset_samples(Crop == "Soybean" & Code != "S185_86" & Time.Point %in% c("0","6", "12", "18")) %>% 
   phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
 
 core.rare.soybean <- core.prioritizing(bac.no.norm.soybean)
 
