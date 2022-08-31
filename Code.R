@@ -642,9 +642,6 @@ soybean <- ggplot() +
 #scale_color_manual(values = c(cbbPalette, "purple"))
 
 
-ggpubr::ggarrange(control, soybean, nrow = 2, ncol = 1, labels = c("a", "b"), common.legend = T)
-
-
 library(tyRa)
 library(minpack.lm)
 library(Hmisc)
