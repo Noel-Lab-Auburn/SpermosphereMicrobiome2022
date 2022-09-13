@@ -11,6 +11,7 @@ library(Biostrings)
 
 source('functions_themes.R')
 options(scipen=10000) 
+
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
 ##### Bacteria #####
@@ -275,9 +276,12 @@ boxplot(beta.disp)
 anosim(bac.bray, bac.css.norm@sam_data$Crop) #Are there significant changes?
 # Is differences in management due to differences in centroids (means) or differences in dispersion?
 
+bac.css.norm.18 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "18")
+
 
 # Perform indicator species analysis just considering the four original groups
-indicator.dist.crop <- indicspecies::multipatt(as.data.frame(t(bac.css.norm@otu_table)), cluster = bac.css.norm@sam_data$Crop, max.order = 1)
+indicator.dist.crop <- indicspecies::multipatt(as.data.frame(t(bac.css.norm.18@otu_table)), cluster = bac.css.norm.18@sam_data$Crop, max.order = 1)
 # summary of results
 summary(indicator.dist.crop, indvalcomp = TRUE)
 
@@ -314,7 +318,7 @@ genus_colors <-c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C",
                  "#FF7F00", "#CAB2D6","#8A7C64","#652926",
                  "#6A3D9A", "#B15928", "#FFC000")
 
-ggplot(sig.crop2, aes(x = cropaffected, fill = category)) + 
+Indic.species.18 <- ggplot(sig.crop2, aes(x = cropaffected, fill = category)) + 
   geom_bar()+
   scale_fill_manual(values = genus_colors)+
   theme_classic()+
@@ -327,6 +331,10 @@ ggplot(sig.crop2, aes(x = cropaffected, fill = category)) +
         strip.text = element_text(size = 12)) +
   ylab("Count") +
   xlab("")
+ggpubr::ggarrange(Indic.species.6, 
+                  Indic.species.12,
+                  Indic.species.18, nrow = 1, ncol = 3, labels = c("a", "b", "c", "d"), common.legend = T)
+
 
 #Water_Imbibition
 
@@ -660,13 +668,15 @@ predictions <- spp.out$predictions
 predictions$otu <- rownames(predictions)
 predictions$core <- ifelse(predictions$otu %in% core.rare.soybean[[1]], "core", "not core")
 predictions2 <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
-predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "core",]
+soybean.predictions.notcore <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "not core",]
 
-ggplot() +
-  geom_point(data = predictions2, aes(x = log10(p), y = freq, color = fit_class, shape = core), alpha = 0.8, size = 2) +
-  geom_line(color='black', data=predictions2, size=1, aes(y=predictions2$freq.pred, x=log10(predictions2$p)), alpha=.25) +
-  geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.upr, x=log10(predictions2$p)), alpha=.25)+
-  geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.lwr, x=log10(predictions2$p)), alpha=.25)+
+write.csv(soybean.predictions.notcore, "Soybean.notcore.csv")
+
+soybean2 <- ggplot() +
+  geom_point(data = predictions2, aes(x = log10(p), y = freq, shape = core), alpha = 0.8, size = 2) +
+  #geom_line(color='black', data=predictions2, size=1, aes(y=predictions2$freq.pred, x=log10(predictions2$p)), alpha=.25) +
+  #geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.upr, x=log10(predictions2$p)), alpha=.25)+
+  #geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.lwr, x=log10(predictions2$p)), alpha=.25)+
   labs(x="log10(Mean relative abundance)", y="Occupancy") + 
   theme_classic() + 
   ylim(c(0, 1))+
@@ -813,9 +823,11 @@ predictions <- spp.out$predictions
 predictions$otu <- rownames(predictions)
 predictions$core <- ifelse(predictions$otu %in% core.rare.cotton[[1]], "core", "not core")
 predictions2 <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
-predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "core",]
+cotton.predictions <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "core",]
 
-ggplot() +
+write.csv(cotton.predictions, "Cotton.core.csv")
+
+cotton2 <- ggplot() +
   geom_point(data = predictions2, aes(x = log10(p), y = freq, color = fit_class, shape = core), alpha = 0.8, size = 2) +
   geom_line(color='black', data=predictions2, size=1, aes(y=predictions2$freq.pred, x=log10(predictions2$p)), alpha=.25) +
   geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.upr, x=log10(predictions2$p)), alpha=.25)+
