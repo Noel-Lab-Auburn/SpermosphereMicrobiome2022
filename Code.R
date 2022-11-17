@@ -307,7 +307,6 @@ sig.crop$cropaffected <- ifelse(sig.crop$index == 3, "Soybean",
 sig.crop.categories <- sig.crop %>%
   group_by(Class) %>%
   tally() %>%
-  print(n = 30) %>%
   mutate(category = ifelse(n <= 3, "Other", Class))
 
 sig.crop2 <- left_join(sig.crop, sig.crop.categories, by = "Class")
@@ -335,6 +334,47 @@ ggpubr::ggarrange(Indic.species.6,
                   Indic.species.12,
                   Indic.species.18, nrow = 1, ncol = 3, labels = c("a", "b", "c", "d"), common.legend = T)
 
+#Indicator- OTUS by Class
+Indicator.2 <- read.csv("~/Kemi/My Research/Spermosphere/Spermosphere Microbiome/SpermosphereMicrobiome2022/SpermosphereMicrobiome2022/Indicator Species 2.csv")
+
+ggplot(Indicator.2, aes(x = Crop, fill = OTU)) + 
+  geom_bar()+
+  scale_fill_manual(values = genus_colors)+
+  theme_classic()+
+  labs(fill =  "Class")+
+  theme(axis.text.x = element_text(size = 14, vjust = 1, hjust = 0.5),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        strip.text = element_text(size = 12)) +
+  ylab("Count") +
+  xlab("")
+
+install.packages("scales")
+library(scales)
+library(dplyr)
+
+Indicator.3 <- Indicator.2 %>% 
+  group_by(Class, cropaffected)  %>% 
+  summarise(OTU_per_Class = sum(OTU))  %>% 
+  ungroup()   %>% 
+  mutate(OTU_Total = sum (OTU_per_Class), 
+  Percent_OTU = percent(OTU_per_Class/OTU_Total))
+
+ggplot(Indicator.2, aes(x = cropaffected, fill = category)) + 
+  geom_bar()+
+  scale_fill_manual(values = genus_colors)+
+  theme_classic()+
+  labs(fill =  "Class")+
+  theme(axis.text.x = element_text(size = 14, vjust = 1, hjust = 0.5),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        strip.text = element_text(size = 12)) +
+  ylab("Count") +
+  xlab("")
 
 #Water_Imbibition
 
@@ -632,12 +672,13 @@ core.prioritizing <- function(phyloseq.object){
   return(return_list)
 }
 
+### Soybean 
 bac.no.norm.soybean <- bac_sperm %>% 
-  subset_samples(Crop == "Soybean" & Code != "S185_86" & Time.Point %in% c("0","6", "12", "18")) %>% 
+  subset_samples(Crop == "Soybean" & Code != "S185_86" & Time.Point %in% c("6", "12", "18")) %>% 
   phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
 
-
 core.rare.soybean <- core.prioritizing(bac.no.norm.soybean)
+
 
 occ.abund.soybean <- core.rare.soybean[[4]]
 occ.abund2.soybean <- left_join(occ.abund.soybean, taxonomy.bac, by = c("otu" = "OTU"))
@@ -654,142 +695,45 @@ library(tyRa)
 library(minpack.lm)
 library(Hmisc)
 set.seed(19)
-rare.phyloseq.object <- rarefy_even_depth(bac.no.norm.soybean, replace=TRUE)
+rare.phyloseq.object.soybean <- rarefy_even_depth(bac.no.norm.soybean, replace=TRUE)
 
-nReads=sample_sums(rare.phyloseq.object)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
-otu <- rare.phyloseq.object@otu_table %>%
+nReads.soybean=sample_sums(rare.phyloseq.object.soybean)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
+otu.soybean <- rare.phyloseq.object.soybean@otu_table %>%
   as("matrix")
 taxa <- rownames(otu)
-map <- rare.phyloseq.object@sam_data %>%
+map <- rare.phyloseq.object.soybean@sam_data %>%
   as("data.frame")
 spp.out <- tyRa::fit_sncm(spp = t(otu), pool=NULL, taxon=taxa)
 
 predictions <- spp.out$predictions
 predictions$otu <- rownames(predictions)
 predictions$core <- ifelse(predictions$otu %in% core.rare.soybean[[1]], "core", "not core")
-predictions2 <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
+predictions2.soybean <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
 soybean.predictions.notcore <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "not core",]
 
 write.csv(soybean.predictions.notcore, "Soybean.notcore.csv")
 
 soybean2 <- ggplot() +
-  geom_point(data = predictions2, aes(x = log10(p), y = freq, shape = core), alpha = 0.8, size = 2) +
-  #geom_line(color='black', data=predictions2, size=1, aes(y=predictions2$freq.pred, x=log10(predictions2$p)), alpha=.25) +
-  #geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.upr, x=log10(predictions2$p)), alpha=.25)+
-  #geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.lwr, x=log10(predictions2$p)), alpha=.25)+
+  geom_point(data = predictions2.soybean, aes(x = log10(p), y = freq, color = fit_class, shape = core), alpha = 0.8, size = 2) +
+  geom_line(color='black', data=predictions2.soybean, size=1, aes(y=predictions2.soybean$freq.pred, x=log10(predictions2.soybean$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.soybean, aes(y=predictions2.soybean$pred.upr, x=log10(predictions2.soybean$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.soybean, aes(y=predictions2.soybean$pred.lwr, x=log10(predictions2.soybean$p)), alpha=.25)+
   labs(x="log10(Mean relative abundance)", y="Occupancy") + 
   theme_classic() + 
   ylim(c(0, 1))+
   scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9")) +
-  geom_label(data = predictions2[predictions2$core == "core" & predictions2$fit_class == "Below prediction" & log10(predictions2$p) < -2,], 
+  geom_label(data = predictions2[predictions2.soybean$core == "core" & predictions2.soybean$fit_class == "Below prediction" & log10(predictions2.soybean$p) < -2,], 
              aes(x = log10(p), y = freq, label = Label))
 
-#Cotton- Core
-core.prioritizing <- function(phyloseq.object){
-  
-  set.seed(19)
-  rare.phyloseq.object <- rarefy_even_depth(phyloseq.object, replace=TRUE)
-  
-  nReads=sample_sums(rare.phyloseq.object)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
-  otu <- rare.phyloseq.object@otu_table %>%
-    as("matrix")
-  map <- rare.phyloseq.object@sam_data %>%
-    as("data.frame")
-  
-  otu_PA <- 1*((otu>0)==1)                                               # presence-absence data
-  otu_occ <- rowSums(otu_PA)/ncol(otu_PA)                                # occupancy calculation
-  otu_rel <- apply(decostand(otu, method="total", MARGIN=2),1, mean)     # mean relative abundance
-  occ_abun <- add_rownames(as.data.frame(cbind(otu_occ, otu_rel)),'otu') # combining occupancy and abundance data frame
-  
-  # Ranking OTUs based on their occupancy
-  # For caluclating raking index we included following conditions:
-  #   - time-specific occupancy (sumF) = frequency of detection within time point (genotype or site)
-  #   - replication consistency (sumG) = has occupancy of 1 in at least one time point (genotype or site) (1 if occupancy 1, else 0)
-  
-  PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>% 
-    gather(Code, abun, -otu) %>%
-    left_join(map, by = 'Code') %>%
-    group_by(otu, Time.Point) %>%
-    dplyr::summarise(time_freq=sum(abun>0)/length(abun),            # frequency of detection between time points
-                     coreTime=ifelse(time_freq == 1, 1, 0)) %>%     # 1 only if occupancy 1 with specific time, 0 if not
-    group_by(otu) %>%
-    dplyr::summarise(sumF=sum(time_freq),
-                     sumG=sum(coreTime),
-                     nS=length(Time.Point)*2,           
-                     Index=(sumF+sumG)/nS)                 # calculating weighting Index based on number of time points detected and 
-  
-  otu_ranked <- occ_abun %>%
-    left_join(PresenceSum, by='otu') %>%
-    transmute(otu=otu,
-              rank=Index) %>%
-    arrange(desc(rank))
-  
-  # Calculating the contribution of ranked OTUs to the BC similarity
-  BCaddition <- NULL
-  
-  # calculating BC dissimilarity based on the 1st ranked OTU
-  # with 36 samples there should be 630 combinations n!/r!
-  otu_start=otu_ranked$otu[1]                   
-  start_matrix <- as.matrix(otu[otu_start,])
-  start_matrix <- t(start_matrix)
-  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
-  x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-  df_s <- data.frame(x_names,x)
-  df_s$rank_count <- 1
-  BCaddition <- rbind(BCaddition,df_s)
-  # calculating BC dissimilarity based on additon of ranked OTUs from 2nd to 500th. Can be set to the entire length of OTUs in the dataset, however it might take some time if more than 5000 OTUs are included.
-  for(i in 2:500){                              
-    otu_add=otu_ranked$otu[i]                       
-    add_matrix <- as.matrix(otu[otu_add,])
-    add_matrix <- t(add_matrix)
-    start_matrix <- rbind(start_matrix, add_matrix)
-    x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
-    #x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-    df_a <- data.frame(x_names,x)
-    df_a$rank_count <- i 
-    BCaddition <- rbind.data.frame(BCaddition, df_a)
-  }
-  # calculating the BC dissimilarity of the whole dataset (not needed if the second loop is already including all OTUs) 
-  x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))   
-  x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
-  df_full <- data.frame(x_names,x)
-  df_full$rank_count <- length(rownames(otu))
-  BCfull <- rbind.data.frame(BCaddition, df_full)
-  
-  BC_ranked <- BCfull %>%
-    group_by(rank_count) %>%
-    dplyr::summarise(MeanBC=mean(x)) %>%            # mean Bray-Curtis dissimilarity
-    arrange(desc(-MeanBC)) %>%
-    mutate(proportionBC=MeanBC/max(MeanBC))   # proportion of the dissimilarity explained by the n number of ranked OTUs
-  Increase=BC_ranked$MeanBC[-1]/BC_ranked$MeanBC[-length(BC_ranked$MeanBC)]
-  increaseDF <- data.frame(IncreaseBC=c(0,(Increase)), rank=factor(c(1:(length(Increase)+1))))
-  increaseDF$rank <- as.numeric(increaseDF$rank)
-  BC_ranked <- left_join(BC_ranked, increaseDF, by = c("rank_count" = "rank"))
-  BC_ranked <- BC_ranked[-nrow(BC_ranked),]
-  
-  #Creating threshold for core inclusion - last call method
-  
-  #B) Final increase in BC similarity of equal or greater then 2% 
-  lastCall <- last(as.numeric(BC_ranked$rank_count[(BC_ranked$IncreaseBC>=1.02)]))
-  
-  #Creating plot of Bray-Curtis similarity
-  plot <- ggplot(BC_ranked[1:100,], aes(x=factor(BC_ranked$rank_count[1:100], levels=BC_ranked$rank_count[1:100]))) +
-    geom_point(aes(y=proportionBC)) +
-    theme_classic() + theme(strip.background = element_blank(),axis.text.x = element_text(size=7, angle=45)) +
-    geom_vline(xintercept=last(as.numeric(BC_ranked$rank_count[(BC_ranked$IncreaseBC>=1.02)])), lty=3, col='black', cex=.5) +
-    labs(x='ranked OTUs',y='Bray-Curtis similarity') +
-    annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))+3, y=.5, label=paste("Last 2% increase (",last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])),")",sep=''), color="black")
-  
-  core.otus.CSS.mean.T1 <- otu_ranked$otu[1:lastCall]
-  return_list <- list(core.otus.CSS.mean.T1, plot, otu_ranked, occ_abun)
-  return(return_list)
-}
-bac.no.norm.cotton <- bac_sperm %>% 
-  subset_samples(Crop == "Cotton " & Time.Point %in% c("0","6", "12", "18")) %>% 
+###Cotton- Core
+
+bac.no.norm <- bac_sperm %>% 
+  subset_samples(Crop == "Cotton " & Time.Point %in% c("6", "12", "18")) %>% 
   phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
 
 
 core.rare.cotton <- core.prioritizing(bac.no.norm.cotton)
+
 
 occ.abund.cotton <- core.rare.cotton[[4]]
 occ.abund2.cotton <- left_join(occ.abund.cotton, taxonomy.bac, by = c("otu" = "OTU"))
@@ -802,43 +746,91 @@ cotton <- ggplot() +
 #scale_color_manual(values = c(cbbPalette, "purple"))
 
 
-ggpubr::ggarrange(cotton, soybean, nrow = 2, ncol = 1, labels = c("a", "b"), common.legend = T)
-
-
 library(tyRa)
 library(minpack.lm)
 library(Hmisc)
 set.seed(19)
-rare.phyloseq.object <- rarefy_even_depth(bac.no.norm.cotton, replace=TRUE)
+rare.phyloseq.object.cotton <- rarefy_even_depth(bac.no.norm.cotton, replace=TRUE)
 
-nReads=sample_sums(rare.phyloseq.object)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
-otu <- rare.phyloseq.object@otu_table %>%
+nReads.cotton=sample_sums(rare.phyloseq.object.cotton)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
+otu.cotton <- rare.phyloseq.object.cotton@otu_table %>%
   as("matrix")
 taxa <- rownames(otu)
-map <- rare.phyloseq.object@sam_data %>%
+map <- rare.phyloseq.object.cotton@sam_data %>%
   as("data.frame")
 spp.out <- tyRa::fit_sncm(spp = t(otu), pool=NULL, taxon=taxa)
 
 predictions <- spp.out$predictions
 predictions$otu <- rownames(predictions)
 predictions$core <- ifelse(predictions$otu %in% core.rare.cotton[[1]], "core", "not core")
-predictions2 <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
-cotton.predictions <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "core",]
+predictions2.cotton <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
+cotton.predictions.notcore <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "not core",]
 
-write.csv(cotton.predictions, "Cotton.core.csv")
+write.csv(cotton.predictions.notcore, "Cotton.notcore.csv")
 
 cotton2 <- ggplot() +
-  geom_point(data = predictions2, aes(x = log10(p), y = freq, color = fit_class, shape = core), alpha = 0.8, size = 2) +
-  geom_line(color='black', data=predictions2, size=1, aes(y=predictions2$freq.pred, x=log10(predictions2$p)), alpha=.25) +
-  geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.upr, x=log10(predictions2$p)), alpha=.25)+
-  geom_line(color='black', lty='twodash', size=1, data=predictions2, aes(y=predictions2$pred.lwr, x=log10(predictions2$p)), alpha=.25)+
+  geom_point(data = predictions2.cotton, aes(x = log10(p), y = freq, color = fit_class, shape = core), alpha = 0.8, size = 2) +
+  geom_line(color='black', data=predictions2.cotton, size=1, aes(y=predictions2.cotton$freq.pred, x=log10(predictions2.cotton$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.cotton, aes(y=predictions2.cotton$pred.upr, x=log10(predictions2.cotton$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.cotton, aes(y=predictions2.cotton$pred.lwr, x=log10(predictions2.cotton$p)), alpha=.25)+
   labs(x="log10(Mean relative abundance)", y="Occupancy") + 
   theme_classic() + 
   ylim(c(0, 1))+
-  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9")) +
-  geom_label(data = predictions2[predictions2$core == "core" & predictions2$fit_class == "Below prediction" & log10(predictions2$p) < -2,], 
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9")) 
+  geom_label(data = predictions2[predictions2.cotton$core == "core" & predictions2.cotton$fit_class == "Below prediction" & log10(predictions2.cotton$p) < -2,], 
              aes(x = log10(p), y = freq, label = Label))
 
+
+
+### Bulk Soil 
+bac.no.norm.soil <- bac_sperm %>% 
+  subset_samples(Crop == "Bulk Soil" & Code != "S185_86" & Time.Point %in% c("6", "12", "18")) %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+core.rare.soil <- core.prioritizing(bac.no.norm.soil)
+
+
+occ.abund.soil <- core.rare.soil[[4]]
+occ.abund2.soil <- left_join(occ.abund.soil, taxonomy.bac, by = c("otu" = "OTU"))
+occ.abund2.soil$core <- ifelse(occ.abund2.soil$otu %in% core.rare.soil[[1]], "Core", "Not Core")
+
+soil<- ggplot() + 
+  geom_point(data = occ.abund2.soil[occ.abund2.soil$core == "Core",], aes(x = log10(otu_rel), y = otu_occ, color = Phylum)) + 
+  geom_point(data = occ.abund2.soil[occ.abund2.soil$core == "Not Core",], aes(x = log10(otu_rel), y = otu_occ), shape = 2, color = "grey", alpha = 0.5) + 
+  theme_classic() 
+#scale_color_manual(values = c(cbbPalette, "purple"))
+
+set.seed(19)
+rare.phyloseq.object.soil <- rarefy_even_depth(bac.no.norm.soil, replace=TRUE)
+
+nReads=sample_sums(rare.phyloseq.object.soil)[[1]]                                                                 # input dataset needs to be rarified and the rarifaction depth included 
+otu <- rare.phyloseq.object.soil@otu_table %>%
+  as("matrix")
+taxa <- rownames(otu)
+map <- rare.phyloseq.object.soil@sam_data %>%
+  as("data.frame")
+spp.out <- tyRa::fit_sncm(spp = t(otu), pool=NULL, taxon=taxa)
+
+predictions. <- spp.out$predictions
+predictions$otu <- rownames(predictions)
+predictions$core <- ifelse(predictions$otu %in% core.rare.soil[[1]], "core", "not core")
+predictions2.soil <- left_join(predictions, taxonomy.bac, by = c("otu" = "OTU"))
+
+soybean.predictions.notcore <- predictions2[predictions2$fit_class == "Above prediction" & predictions2$core == "not core",]
+
+write.csv(soybean.predictions.notcore, "Soybean.notcore.csv")
+
+soil2 <- ggplot() +
+  geom_point(data = predictions2.soil, aes(x = log10(p),color = fit_class, y = freq, shape = core), alpha = 0.8, size = 2) +
+  geom_line(color='black', data=predictions2.soil, size=1, aes(y=predictions2.soil$freq.pred, x=log10(predictions2.soil$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.soil, aes(y=predictions2.soil$pred.upr, x=log10(predictions2.soil$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=predictions2.soil, aes(y=predictions2.soil$pred.lwr, x=log10(predictions2.soil$p)), alpha=.25)+
+  labs(x="log10(Mean relative abundance)", y="Occupancy") + 
+  theme_classic() + 
+  ylim(c(0, 1))+
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9")) 
+  geom_label(data = predictions2[predictions2.soil$core == "core" & predictions2.soil$fit_class == "Below prediction" & log10(predictions2.soil$p) < -2,], 
+             aes(x = log10(p), y = freq, label = Label))
 
 #####Fungi########
 if (!requireNamespace("BiocManager", quietly = TRUE))
