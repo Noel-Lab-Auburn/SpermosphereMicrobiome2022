@@ -1,5 +1,6 @@
-################BACTERIOME############
+################Data Preprocessing############
 
+###### Libraries #####
 library(phyloseq)
 library(decontam)
 library(vegan)
@@ -9,40 +10,48 @@ library(ggplot2)
 library(ggpubr)
 library(Biostrings)
 
-source('functions_themes.R')
+# set options for scientific numbers to not be displayed
 options(scipen=10000) 
 
+# color blind pallet used throughout 
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
-##### Bacteria #####
+###### Bacteria #####
 
-samp_dat_bac <- read.csv("~/Kemi/My Research/Spermosphere/Spermosphere Microbiome/Bacteria_Merged/spermospheremetadata.csv", na.strings = "NA")
+###### Read in data ####
+
+# Metadata #
+samp_dat_bac <- read.csv("Bacteria/spermospheremetadata.csv", na.strings = "NA")
 
 rownames(samp_dat_bac) <- samp_dat_bac$Code #row names must match OTU table headers
 SAMP.bac <- phyloseq::sample_data(samp_dat_bac)
 
-# OTU table 
-otu_bac <- read.csv("~/Kemi/My Research/Spermosphere/Spermosphere Microbiome/Bacteria_Merged/otu_table_16s.csv")
+# OTU table #
+otu_bac <- read.csv("Bacteria/otu_table_16s.csv")
 rownames(otu_bac) <- otu_bac$OTU_ID
 otu_bac <- otu_bac[,-1]
 OTU.bac <- phyloseq::otu_table(otu_bac, taxa_are_rows = TRUE)
 
 any(is.na(otu_bac)) # no NA in the OTU table
 
-# Taxonomy
-taxonomy.bac <- read.csv("~/Kemi/My Research/Spermosphere/Spermosphere Microbiome/Bacteria_Merged/16s_taxonomy.csv")
+# Taxonomy #
+taxonomy.bac <- read.csv("Bacteria/16s_taxonomy.csv")
 rownames(taxonomy.bac) <- taxonomy.bac$OTU
 TAX.bac <- phyloseq::tax_table(as.matrix(taxonomy.bac))
 
 all.equal(rownames(samp_dat_bac), colnames(otu_bac))
 
-# Fasta
-FASTA.bac <- readDNAStringSet("~/Kemi/My Research/Spermosphere/Spermosphere Microbiome/Bacteria_Merged/otus_16s.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+# Fasta #
+FASTA.bac <- readDNAStringSet("Bacteria/otus_16s.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
 
-#Merge reads into Phyloseq object
-bac.unedited <- phyloseq::phyloseq(OTU.bac, TAX.bac, FASTA.bac, SAMP.bac)
+# Phylogentic tree #
+tree <- phyloseq::read_tree("Bacteria/otus_16s_midpoint.tre")
 
-# Decontaminate
+###### Create a phyloseq object #####
+# Merge reads into Phyloseq object #
+bac.unedited <- phyloseq::phyloseq(OTU.bac, TAX.bac, FASTA.bac, SAMP.bac, tree)
+
+###### Decontaminate #####
 bac.unedited@sam_data$Sample_or_Control <- ifelse(bac.unedited@sam_data$Crop %in% c("NEC", "Water"), "Control Sample", "True Sample")
 sample_data(bac.unedited)$is.neg <- sample_data(bac.unedited)$Sample_or_Control == "Control Sample"
 contamdf.prev <- isContaminant(bac.unedited, method="prevalence", neg="is.neg", threshold = 0.1, normalize = TRUE)
@@ -53,6 +62,7 @@ print(badTaxa)
 ps.pa <- transform_sample_counts(bac.unedited, function(abund) 1*(abund>0))
 ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
 ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+
 # Make data.frame of prevalence in positive and negative samples
 df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
                     contaminant=contamdf.prev$contaminant)
@@ -64,70 +74,109 @@ decontaminate <- ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) 
 goodTaxa <- setdiff(taxa_names(bac.unedited), badTaxa)
 bac_sub_no_bad <- prune_taxa(goodTaxa, bac.unedited)
 
-## remove OTUs that are mitochondria or chloroplast
+
+###### Taxonomy filtering #####
+# remove OTUs that are mitochondria, chloroplast, or unidentified at the kingdom level 
 bac_no_chloro <- bac_sub_no_bad %>% 
   phyloseq::subset_taxa(Order != "Chloroplast") %>%
   phyloseq::subset_taxa(Family != "Mitochondria") %>%
   phyloseq::subset_taxa(Kingdom != "unidentified")
 
+###### Mock Community analysis ##### 
 # positive controls
 bac_mock <- bac_no_chloro %>% 
   subset_samples(Crop == "MOCK") %>%
-  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+  phyloseq::filter_taxa(function(x) sum(x) > 1, TRUE) # filter OTUs to have more than 1 read in mock samples
 
-#unique(bac_mock@tax_table@.Data[,2])
+mock2 <- microbiome::transform(bac_mock, "compositional") # relative abundance transform
 
-mock = filter_taxa(bac_mock, function(x) sum(x > 1) > (0.1*length(x)), TRUE)
-
-mock2 <- microbiome::transform(mock, "compositional")
-
-
-mock.community <- microbiome::plot_composition(mock2,
-                                               taxonomic.level = "Genus",
-                                               x.label = "Sample_ID") +
-  theme_classic()+
-  #scale_fill_manual(values= cbbPalette) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(x = "", y = "Relative abundance (%)",
-       title = "Relative abundance data") + 
-  theme(axis.text.x = element_text(angle=45, hjust=1),
-        legend.text = element_text(face = "italic")) 
-
-Mock3 <- mock.community$data
-# at the 0.00015 and 0.00015 prevelence and detection cutoffs 99.9% of the positive control samples were classified as mock community. 
-
-Mock4 <- left_join(Mock3, taxonomy.bac, by = c("Tax" = "OTU"))
-
-#Plot for mock communities 
-mock.community1 <- ggplot(Mock4, aes(Sample, Abundance, fill = Genus)) +
+sequenced.mock <- mock2 %>%
+  psmelt() %>% 
+  ggplot(aes(Sample, Abundance, fill = Label)) +
   geom_bar(stat = "identity") +
   theme_classic() +
-  #scale_fill_manual(values= cbbPalette) +
+  scale_fill_manual(values= c(cbbPalette, "violet", "pink", "grey", "black", "blue")) +
   scale_y_continuous(labels = scales::percent) +
   labs(x = "", y = "Relative abundance (%)",
-       title = "Relative abundance data") + 
+       title = "Sequenced") + 
   theme(axis.text.x = element_text(angle=45, hjust=1),
-        legend.text = element_text(face = "italic")) 
+        legend.text = element_text(face = "italic"),
+        legend.title = element_blank()) 
 
-#to extract Mock community data
-Pcontrol = mock.community1$data
-library(knitr)
-kable(Pcontrol, digits = 3, format = "markdown")
+# Adding in theoretical distribution - the last two are fungi and are not expected to be amplified with 16S
+Label <- c("Pseudomonas aeruginosa", 
+             "Escherichia coli",
+             "Salmonella enterica", 
+             "Lactobacillus fermentum", 
+             "Enterococcus faecalis", 
+             "Staphylococcus aureus", 
+             "Listeria monocytogenes", 
+             "Bacillus subtilis")
 
-#Removed Emergence data and outlier-S185_86)
+# theoretical species composition in the mock community
+Abundance <- c(rep(0.125, 8))
+
+th.mock <- data.frame(Label, Abundance)
+th.mock$Sample <- "Theoretical"
+
+th.mock$Label <- factor(th.mock$Label, levels = c("Lactobacillus fermentum", 
+                                                  "Staphylococcus aureus", 
+                                                  "Bacillus subtilis",
+                                                  "Escherichia coli",
+                                                  "Listeria monocytogenes",
+                                                  "Enterococcus faecalis",
+                                                  "Salmonella enterica",
+                                                  "Pseudomonas aeruginosa"))
+
+
+theory.mock <- ggplot(th.mock, aes(Sample, Abundance, fill = Label)) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values= c(cbbPalette[[1]], 
+                              cbbPalette[[2]], 
+                              cbbPalette[[3]], 
+                              cbbPalette[[4]], 
+                              cbbPalette[[5]],
+                              cbbPalette[[6]],
+                              cbbPalette[[8]],
+                              "violet", "pink", "grey", "black", "blue")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", y = "Relative abundance (%)",
+       title = "Theoretical composition") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        legend.text = element_text(face = "italic"),
+        legend.title = element_blank())
+
+# I think maybe the theoretical mock community can also be mentioned in the figure legend. 
+
+mock.composition <- mock2 %>%
+  psmelt() %>%
+  group_by(Label) %>%
+  summarise(MeanRelAbund = mean(Abundance)) %>%
+  arrange(-MeanRelAbund)
+
+# these 8 OTUs made up 99.9% of the mock composition. These OTUs also match the 8 supposed to be in the mock
+sum(mock.composition[1:8,]$MeanRelAbund)
+
+###### Data filtering #####
+# remove samples with less than 10,000 reads
+# removed emergence data since not all samples emerged and their inclusion was questionable from the begining. 
+# Removed one outlier-S185_86 with very dominant community structure; infected?)
+
 bac_sperm_noE <- bac_no_chloro %>% 
   subset_samples(Time.Point %in% c("0", "6", "12", "18")) %>%
   prune_samples(sample_sums(.) > 10000, .) %>% # remove samples below 10,000 reads
-  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE) # remove taxa with zero reads (i.e., those not present in objective 1)
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE) # remove taxa with less than 1 reads (i.e., those not present in objective 1)
 
 bac_sperm <- subset_samples(bac_sperm_noE, Code != "S185_86")
 
+###### RDS of Non-normalized Prokaryote data ######
 # Save an object to a file
-saveRDS(bac_sperm, file = "Bacteria_spermosphere_nonnorm_041922.rds")
+saveRDS(bac_sperm, file = "Bacteria/Bacteria_spermosphere_nonnorm_112922.rds")
 # Restore the object
-bac_sperm <- readRDS(file = "Bacteria_spermosphere_nonnorm_041922.rds")
+bac_sperm <- readRDS(file = "Bacteria/Bacteria_spermosphere_nonnorm_112922.rds")
 
-# READS PER SAMPLE
+###### READS PER SAMPLE ######
 sample.sums <- sort.DataFrame(data.frame(sample_sums(bac_sperm)))
 
 read.dist <- ggplot(sample.sums, aes(x = sample_sums.bac_sperm.)) +
@@ -135,23 +184,16 @@ read.dist <- ggplot(sample.sums, aes(x = sample_sums.bac_sperm.)) +
   theme_classic() +
   xlab("Read Depth")
 
-sum(sample_sums(bac_sperm)) # total reads = 2,456,177
-#after removing emergence data: 2,090,814
+sum(sample_sums(bac_sperm)) # total reads = 2,090,814
+median(sample_sums(bac_sperm)) # 29237.5
 
-# minimum number of reads per sample is 14,568, which is really good. 
-
-mean(sample_sums(bac_sperm)) # 28896.2 ##29868.77
-median(sample_sums(bac_sperm)) # 28151 reads ##29237.5
-
-# Rarefaction analysis 
+###### Rarefaction analysis #####
 sam.data <- data.frame(bac_sperm@sam_data)
 bOTU.table <- bac_sperm@otu_table
 S <- specnumber(t(bOTU.table)) # observed number of species
 raremax <- min(rowSums(t(bOTU.table)))
 Srare <- rarefy(t(bOTU.table), raremax)
-plot(S, Srare, xlab = "Observed No. of Species", ylab = "Rarefied No. of Species")
-abline(0, 1)
-rare.fun <- rarecurve(t(bOTU.table), step = 1000, sample = raremax, col = "blue", cex = 0.6)
+rare.fun <- rarecurve(t(bOTU.table), step = 1000, sample = raremax, cex = 0.6)
 
 bac.rare.curve.extract <- NULL
 for(i in 1:length(rare.fun)){
@@ -168,107 +210,450 @@ bac.rare <- ggplot(bac.rare.curve.extract2, aes(x = read_depth, y = rare.spec, g
   xlab("Reads") + 
   ylab("Number of OTUs") + 
   theme_classic() + 
-  geom_vline(xintercept = 28773, linetype = "dashed") +
+  geom_vline(xintercept = median(sample_sums(bac_sperm)), linetype = "dashed") +
   scale_color_manual(values = cbbPalette)
 
-# Supplemental Figure 1
-ggpubr::ggarrange(bac.rare, decontaminate, read.dist, mock.community1, nrow = 2, ncol = 2, labels = c("a", "b", "c", "d"))
+###### Supplemental Figure 1 ######
+ggpubr::ggarrange(bac.rare, decontaminate, read.dist, ggpubr::ggarrange(theory.mock, sequenced.mock), nrow = 2, ncol = 2, labels = c("a", "b", "c", "d"))
 
-bac_sperm2 <- filter_taxa(bac_sperm, function(x) sum(x > 1) > (0.05*length(x)), TRUE)
-
-# Metagenome CSS normalization
-MGS <- phyloseq_to_metagenomeSeq(bac_sperm)
+####### Metagenome CSS normalization ######
+MGS <- phyloseq_to_metagenomeSeq(bac_sperm) #converts to metagenomeseq format
 p <- metagenomeSeq::cumNormStatFast(MGS)
-
 MGS <- metagenomeSeq::cumNorm(MGS, p =p)
-
 metagenomeSeq::normFactors(MGS) # exports the normalized factors for each sample
+norm.bac <- metagenomeSeq::MRcounts(MGS, norm = T) 
+norm.bac.OTU <- phyloseq::otu_table(norm.bac, taxa_are_rows = TRUE) #exports the new otu table
+bac.css.norm <- phyloseq::phyloseq(norm.bac.OTU, FASTA.bac, SAMP.bac, TAX.bac, tree) #new otu table phyloseq object
 
-norm.bac <- metagenomeSeq::MRcounts(MGS, norm = T)
+####### Beta-diversity using bray-curtis ########
 
-norm.bac.OTU <- phyloseq::otu_table(norm.bac, taxa_are_rows = TRUE)
-
-bac.css.norm <- phyloseq::phyloseq(norm.bac.OTU, FASTA.bac, SAMP.bac, TAX.bac)
-
+##### All Samples; Bray #####
 bac.bray = phyloseq::distance(bac.css.norm, "bray") # create bray-curtis distance matrix
 
 # PERMANOVA - testing for differences in centroids
 set.seed(12325)
 adonis2(bac.bray~Crop*Time.Point, as(sample_data(bac.css.norm), "data.frame"))
 
-GP.ord <- phyloseq::ordinate(bac_sperm, "MDS", "bray")
-p2 = phyloseq::plot_ordination(bac_sperm, GP.ord, type="samples", color="Crop") 
-p2
+global.ord.bray <- phyloseq::ordinate(bac.css.norm, "MDS", "bray")
+variation.axis1.bray <- round(100*global.ord.bray$values$Relative_eig[[1]], 2) # % variation on axis one
+variation.axis2.bray <- round(100*global.ord.bray$values$Relative_eig[[2]], 2) # % variation on axis two
 
-bac.ggplot.data <- p2$data
+bac.ggplot.data.bray <- data.frame(global.ord.bray$vectors) # get the point values
+bac.ggplot.data.bray$Code <- rownames(bac.ggplot.data.bray) # add rownames
+bac.ggplot.data.bray2 <- left_join(data.frame(bac.css.norm@sam_data), bac.ggplot.data.bray,  by = "Code") # add rest of metadata
+bac.ggplot.data.bray2$Time.Point <- factor(bac.ggplot.data.uni2$Time.Point, levels = c("0", "6", "12", "18")) # order the time points in chronological order
 
-global <- ggplot(bac.ggplot.data, aes(x = Axis.1, y = Axis.2, fill = Crop, shape = Time.Point)) +
+global.bray <- ggplot(bac.ggplot.data.bray2, aes(x = Axis.1, y = Axis.2, fill = Crop, shape = Time.Point)) +
   geom_point(size=4, alpha = 0.7)+
-  scale_shape_manual(values=c(21,22, 23, 24,25,26,27), name = "")+
-  scale_fill_manual(values=cbbPalette, name = "")+
-  xlab("PcoA1 (30.3%)") + 
-  ylab("PcoA2 (15.3%)") +
-  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank())+
+  scale_shape_manual(values=c(21,22, 23, 24,25,26,27), name = "Hours post sowing")+
+  scale_fill_manual(values=cbbPalette, name = "Environment", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere"))+
+  xlab(paste("PcoA1 -", variation.axis1.bray, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.bray, "%")) +
   guides(fill=guide_legend(override.aes=list(shape= 21)),
          shape=guide_legend(override.aes=list(fill= "black")))+
-  ggtitle("") +
-  theme_bw()
+  theme_bw() +
+  ggtitle("Bray-Curtis")
+
+# Separate analysis based on time-points #
+
+### 0 hours; Bray ####
+
+# filter to time point
+bac_sperm_0 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "0") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# bray curtis distance
+bac.bray.0 = phyloseq::distance(bac_sperm_0, "bray") # create bray-curtis distance matrix
+
+# permanova
+set.seed(12325)
+adonis.output.0  <- adonis2(bac.bray.0~Crop, as(sample_data(bac_sperm_0), "data.frame"))
+
+pvalue <- adonis.output.0$`Pr(>F)`[[1]]
+R2 <- adonis.output.0$R2[[1]]
 
 
+#Dispersion for each Time-Point
+beta.disp.0 <- betadisper(bac.bray.0, bac_sperm_0@sam_data$Crop)
 
-#Separating based on time-points (re-run for each time-point)
+adonis.output.0
+permutest(beta.disp.0)
+
+sperm.0.ord <- phyloseq::ordinate(bac_sperm_0, "MDS", "bray")
+sperm.0.ord.vectors <- data.frame(sperm.0.ord$vectors)
+sperm.0.ord.vectors$Code <- rownames(sperm.0.ord.vectors)
+sperm.0.ord.vectors2 <- left_join(data.frame(bac_sperm_0@sam_data), sperm.0.ord.vectors,  by = "Code")
+sperm.0.ord.values <- data.frame(sperm.0.ord$values)
+
+
+# percent variation
+variation.axis1.0.bray <- round(100*sperm.0.ord.values$Relative_eig[[1]], 2)
+variation.axis2.0.bray <- round(100*sperm.0.ord.values$Relative_eig[[2]], 2)
+
+sperm.0.ord.plot <- ggplot(sperm.0.ord.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere")) +  xlab(paste("PcoA1 -", variation.axis1.0.bray, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis1.0.bray, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("0 hrs", subtitle = paste("P =", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+### 6 hours; Bray ####
+
+# filter to time point
+bac_sperm_6 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "6") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# bray curtis distance
+bac.bray.6 = phyloseq::distance(bac_sperm_6, "bray") # create bray-curtis distance matrix
+
+# permanova
+set.seed(12325)
+adonis.output.6  <- adonis2(bac.bray.6~Crop, as(sample_data(bac_sperm_6), "data.frame"))
+
+pvalue <- adonis.output.6$`Pr(>F)`[[1]]
+R2 <- adonis.output.6$R2[[1]]
+
+
+#Dispersion for each Time-Point
+beta.disp.6 <- betadisper(bac.bray.6, bac_sperm_6@sam_data$Crop)
+
+adonis.output.6
+permutest(beta.disp.6)
+
+sperm.6.ord <- phyloseq::ordinate(bac_sperm_6, "MDS", "bray")
+sperm.6.ord.vectors <- data.frame(sperm.6.ord$vectors)
+sperm.6.ord.vectors$Code <- rownames(sperm.6.ord.vectors)
+sperm.6.ord.vectors2 <- left_join(data.frame(bac_sperm_6@sam_data), sperm.6.ord.vectors,  by = "Code")
+sperm.6.ord.values <- data.frame(sperm.6.ord$values)
+
+
+# percent variation
+variation.axis1.6.bray <- round(166*sperm.6.ord.values$Relative_eig[[1]], 2)
+variation.axis2.6.bray <- round(166*sperm.6.ord.values$Relative_eig[[2]], 2)
+
+sperm.6.ord.plot <- ggplot(sperm.6.ord.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere")) +
+  xlab(paste("PcoA1 -", variation.axis1.6.bray, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.6.bray, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("6 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+### 12 hours; Bray ####
+
+# filter to time point
+bac_sperm_12 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "12") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# bray curtis distance
+bac.bray.12 = phyloseq::distance(bac_sperm_12, "bray") # create bray-curtis distance matrix
+
+# permanova
+set.seed(12325)
+adonis.output.12  <- adonis2(bac.bray.12~Crop, as(sample_data(bac_sperm_12), "data.frame"))
+
+pvalue <- adonis.output.12$`Pr(>F)`[[1]]
+R2 <- adonis.output.12$R2[[1]]
+
+
+#Dispersion for each Time-Point
+beta.disp.12 <- betadisper(bac.bray.12, bac_sperm_12@sam_data$Crop)
+
+adonis.output.12
+permutest(beta.disp.12)
+
+sperm.12.ord <- phyloseq::ordinate(bac_sperm_12, "MDS", "bray")
+sperm.12.ord.vectors <- data.frame(sperm.12.ord$vectors)
+sperm.12.ord.vectors$Code <- rownames(sperm.12.ord.vectors)
+sperm.12.ord.vectors2 <- left_join(data.frame(bac_sperm_12@sam_data), sperm.12.ord.vectors,  by = "Code")
+sperm.12.ord.values <- data.frame(sperm.12.ord$values)
+
+
+# percent variation
+variation.axis1.12.bray <- round(100*sperm.12.ord.values$Relative_eig[[1]], 2)
+variation.axis2.12.bray <- round(100*sperm.12.ord.values$Relative_eig[[2]], 2)
+
+sperm.12.ord.plot <- ggplot(sperm.12.ord.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere")) +
+  xlab(paste("PcoA1 -", variation.axis1.12.bray, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.12.bray, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("12 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+### 18 hours; Bray ####
+
+# filter to time point
 bac_sperm_18 <- bac.css.norm %>% 
   subset_samples(Time.Point == "18") %>% 
   phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
 
+# bray curtis distance
 bac.bray.18 = phyloseq::distance(bac_sperm_18, "bray") # create bray-curtis distance matrix
 
-set.seed(12325)
-adonis.output  <- adonis2(bac.bray.18~Crop, as(sample_data(bac_sperm_18), "data.frame"))
+# permanova
+set.seed(18325)
+adonis.output.18  <- adonis2(bac.bray.18~Crop, as(sample_data(bac_sperm_18), "data.frame"))
+
+pvalue <- adonis.output.18$`Pr(>F)`[[1]]
+R2 <- adonis.output.18$R2[[1]]
+
 
 #Dispersion for each Time-Point
-beta.disp <- betadisper(bac.bray.18, bac_sperm_18@sam_data$Crop)
-permutest(beta.disp)
-TukeyHSD(beta.disp)
-plot(beta.disp)
-boxplot(beta.disp)
+beta.disp.18 <- betadisper(bac.bray.18, bac_sperm_18@sam_data$Crop)
 
-GP.ord <- phyloseq::ordinate(bac_sperm_18, "MDS", "bray")
-p2 = phyloseq::plot_ordination(bac_sperm_18, GP.ord, type="samples", color="Crop") 
-p2
+adonis.output.18
+permutest(beta.disp.18)
 
-bac.ggplot.data <- p2$data
+sperm.18.ord <- phyloseq::ordinate(bac_sperm_18, "MDS", "bray")
+sperm.18.ord.vectors <- data.frame(sperm.18.ord$vectors)
+sperm.18.ord.vectors$Code <- rownames(sperm.18.ord.vectors)
+sperm.18.ord.vectors2 <- left_join(data.frame(bac_sperm_18@sam_data), sperm.18.ord.vectors,  by = "Code")
+sperm.18.ord.values <- data.frame(sperm.18.ord$values)
 
-bac.sprm.18.pcoa <- ggplot(bac.ggplot.data, aes(x = Axis.1, y = Axis.2, color = Crop)) +
-  #geom_label()+
-  geom_point(size=4, alpha = 0.7)+
-  scale_color_manual(values=cbbPalette, name = "")+
-  xlab("PcoA1") + 
-  ylab("PcoA2") +
-  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank())+
+
+# percent variation
+variation.axis1.18.bray <- round(100*sperm.18.ord.values$Relative_eig[[1]], 2)
+variation.axis2.18.bray <- round(100*sperm.18.ord.values$Relative_eig[[2]], 2)
+
+sperm.18.ord.plot <- ggplot(sperm.18.ord.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere")) +
+  xlab(paste("PcoA1 -", variation.axis1.18.bray, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.18.bray, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
   guides(fill=guide_legend(override.aes=list(shape=21))) +
-  ggtitle("Prokaryote - 18 hrs") +
+  ggtitle("18 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+####### Beta-Diversity using Weighted Unifrac ####
+
+##### All Samples ########
+bac.unifrac = UniFrac(bac.css.norm, weighted = T) # create weighted unifrac distance matrix
+
+# PERMANOVA - testing for differences in centroids
+set.seed(12325)
+adonis2(bac.unifrac~Crop*Time.Point, as(sample_data(bac.css.norm), "data.frame"))
+
+global.ord.uni <- phyloseq::ordinate(bac.css.norm, "MDS", "unifrac", weighted = TRUE)
+variation.axis1 <- round(100*global.ord.uni$values$Relative_eig[[1]], 2)
+variation.axis2 <- round(100*global.ord.uni$values$Relative_eig[[2]], 2)
+
+bac.ggplot.data.uni <- data.frame(global.ord.uni$vectors)
+bac.ggplot.data.uni$Code <- rownames(bac.ggplot.data.uni)
+bac.ggplot.data.uni2 <- left_join(data.frame(bac.css.norm@sam_data), bac.ggplot.data.uni,  by = "Code")
+bac.ggplot.data.uni2$Time.Point <- factor(bac.ggplot.data.uni2$Time.Point, levels = c("0", "6", "12", "18"))
+
+global.uni <- ggplot(bac.ggplot.data.uni2, aes(x = Axis.1, y = Axis.2, fill = Crop, shape = Time.Point)) +
+  geom_point(size=4, alpha = 0.7)+
+  scale_shape_manual(values=c(21,22, 23, 24,25,26,27), name = "Hours post sowing")+
+  scale_fill_manual(values=cbbPalette, name = "Environment", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere"))+
+  xlab(paste("PcoA1 -", variation.axis1, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2, "%")) +
+  guides(fill=guide_legend(override.aes=list(shape= 21)),
+         shape=guide_legend(override.aes=list(fill= "black")))+
+  theme_bw() + 
+  ggtitle("Weighted Unifrac")
+
+### Supplemental Figure 2
+Supplemental.figure2 <- ggpubr::ggarrange(global.uni, global.bray, common.legend = TRUE, labels = c("a", "b"), legend = "right")
+
+#### 0 hours; Unifrac #####
+bac_sperm_0 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "0") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# PERMANOVA - testing for differences in centroids
+prok.dist.uni.0hrs = UniFrac(bac_sperm_0, weighted = T) # create distance matrix
+adonis.0.uni <- adonis2(prok.dist.uni.0hrs~Crop, as(sample_data(bac_sperm_0), "data.frame")) #Are there significant changes?
+adonis.0.uni
+# The R2 is the variation due to different factors 
+# pvalue is the pvalue for the factor
+
+pvalue <- adonis.0.uni$`Pr(>F)`[[1]]
+R2 <- adonis.0.uni$R2[[1]]
+
+# ploting
+ordination.unifrac.pcoa.0hrs <- ordinate(bac_sperm_0, "PCoA", distance = prok.dist.uni.0hrs) # calculate the resemblance and ordinate using PCoA
+uni.0.values <- data.frame(ordination.unifrac.pcoa.0hrs$values)
+
+# percent variation
+variation.axis1.0.uni <- round(100*uni.0.values$Relative_eig[[1]], 2)
+variation.axis2.0.uni <- round(100*uni.0.values$Relative_eig[[2]], 2)
+
+# data from ordinations
+uni.0.vectors <- data.frame(ordination.unifrac.pcoa.0hrs$vectors) # positions of your points on the pcoa graph
+uni.0.vectors$Code <- rownames(uni.0.vectors)
+uni.0.vectors2 <- left_join(data.frame(bac_sperm_0@sam_data), uni.0.vectors,  by = "Code")
+
+
+pcoa.unifrac.0hrs.new  <- ggplot(uni.0.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "", labels = c("Soil no seeds", "Cotton spermosphere", "Soybean spermosphere")) +
+  xlab(paste("PcoA1 -", variation.axis1.0.uni, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.0.uni, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("0 hrs", subtitle = paste("P =", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
   theme_bw() 
 
 
 
-ggpubr::ggarrange(bac.sprm.0.pcoa, 
-                  bac.sprm.6.pcoa,
-                  bac.sprm.12.pcoa, 
-                  bac.sprm.18.pcoa, nrow = 1, ncol = 4, labels = c("a", "b", "c", "d"), common.legend = T)
-# No difference after 0 hours P = 0.452
-# 6 hours P < 0.001
-# 12 hours P < 0.001
-# 18 hours P < 0.002
-# Emergence P = 0.727
 
-# DISPERSION - testing for differences in variation due to management
-beta.disp <- betadisper(bac.bray, bac.css.norm@sam_data$Time.Point)
-permutest(beta.disp)
-TukeyHSD(beta.disp)
-plot(beta.disp)
-boxplot(beta.disp)
-# Which groups are different from others?
+#### 6 hours; Unifrac #####
+bac_sperm_6 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "6") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# PERMANOVA - testing for differences in centroids
+prok.dist.uni.6hrs = UniFrac(bac_sperm_6, weighted = T) # create distance matrix
+adonis.6.uni <- adonis2(prok.dist.uni.6hrs~Crop, as(sample_data(bac_sperm_6), "data.frame")) #Are there significant changes?
+adonis.6.uni
+# The R2 is the variation due to different factors 
+# pvalue is the pvalue for the factor
+
+pvalue <- adonis.6.uni$`Pr(>F)`[[1]]
+R2 <- adonis.6.uni$R2[[1]]
+
+# ploting
+ordination.unifrac.pcoa.6hrs <- ordinate(bac_sperm_6, "PCoA", distance = prok.dist.uni.6hrs) # calculate the resemblance and ordinate using PCoA
+uni.6.values <- data.frame(ordination.unifrac.pcoa.6hrs$values)
+
+# percent variation
+variation.axis1.6.uni <- round(100*uni.6.values$Relative_eig[[1]], 2)
+variation.axis2.6.uni <- round(100*uni.6.values$Relative_eig[[2]], 2)
+
+# data from ordinations
+uni.6.vectors <- data.frame(ordination.unifrac.pcoa.6hrs$vectors) # positions of your points on the pcoa graph
+uni.6.vectors$Code <- rownames(uni.6.vectors)
+uni.6.vectors2 <- left_join(data.frame(bac_sperm_6@sam_data), uni.6.vectors,  by = "Code")
+
+
+pcoa.unifrac.6hrs.new  <- ggplot(uni.6.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "") +
+  xlab(paste("PcoA1 -", variation.axis1.6.uni, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.6.uni, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("6 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+
+
+
+#### 12 hours; Unifrac #####
+bac_sperm_12 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "12") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# PERMANOVA - testing for differences in centroids
+prok.dist.uni.12hrs = UniFrac(bac_sperm_12, weighted = T) # create distance matrix
+adonis.12.uni <- adonis2(prok.dist.uni.12hrs~Crop, as(sample_data(bac_sperm_12), "data.frame")) #Are there significant changes?
+adonis.12.uni
+# The R2 is the variation due to different factors 
+# pvalue is the pvalue for the factor
+
+pvalue <- adonis.12.uni$`Pr(>F)`[[1]]
+R2 <- adonis.12.uni$R2[[1]]
+
+# ploting
+ordination.unifrac.pcoa.12hrs <- ordinate(bac_sperm_12, "PCoA", distance = prok.dist.uni.12hrs) # calculate the resemblance and ordinate using PCoA
+uni.12.values <- data.frame(ordination.unifrac.pcoa.12hrs$values)
+
+# percent variation
+variation.axis1.12.uni <- round(100*uni.12.values$Relative_eig[[1]], 2)
+variation.axis2.12.uni <- round(100*uni.12.values$Relative_eig[[2]], 2)
+
+# data from ordinations
+uni.12.vectors <- data.frame(ordination.unifrac.pcoa.12hrs$vectors) # positions of your points on the pcoa graph
+uni.12.vectors$Code <- rownames(uni.12.vectors)
+uni.12.vectors2 <- left_join(data.frame(bac_sperm_12@sam_data), uni.12.vectors,  by = "Code")
+
+
+pcoa.unifrac.12hrs.new  <- ggplot(uni.12.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "") +
+  xlab(paste("PcoA1 -", variation.axis1.12.uni, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.12.uni, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("12 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+
+
+
+#### 18 hours; Unifrac #####
+bac_sperm_18 <- bac.css.norm %>% 
+  subset_samples(Time.Point == "18") %>% 
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+# PERMANOVA - testing for differences in centroids
+prok.dist.uni.18hrs = UniFrac(bac_sperm_18, weighted = T) # create distance matrix
+adonis.18.uni <- adonis2(prok.dist.uni.18hrs~Crop, as(sample_data(bac_sperm_18), "data.frame")) #Are there significant changes?
+adonis.18.uni
+# The R2 is the variation due to different factors 
+# pvalue is the pvalue for the factor
+
+pvalue <- adonis.18.uni$`Pr(>F)`[[1]]
+R2 <- adonis.18.uni$R2[[1]]
+
+# ploting
+ordination.unifrac.pcoa.18hrs <- ordinate(bac_sperm_18, "PCoA", distance = prok.dist.uni.18hrs) # calculate the resemblance and ordinate using PCoA
+uni.18.values <- data.frame(ordination.unifrac.pcoa.18hrs$values)
+
+# percent variation
+variation.axis1.18.uni <- round(100*uni.18.values$Relative_eig[[1]], 2)
+variation.axis2.18.uni <- round(100*uni.18.values$Relative_eig[[2]], 2)
+
+# data from ordinations
+uni.18.vectors <- data.frame(ordination.unifrac.pcoa.18hrs$vectors) # positions of your points on the pcoa graph
+uni.18.vectors$Code <- rownames(uni.18.vectors)
+uni.18.vectors2 <- left_join(data.frame(bac_sperm_18@sam_data), uni.18.vectors,  by = "Code")
+
+
+pcoa.unifrac.18hrs.new  <- ggplot(uni.18.vectors2, aes(x = Axis.1, y = Axis.2, color = Crop)) +
+  geom_point(size=4, alpha = 0.7) +
+  scale_color_manual(values=cbbPalette, name = "") +
+  xlab(paste("PcoA1 -", variation.axis1.18.uni, "%")) + 
+  ylab(paste("PcoA2 -", variation.axis2.18.uni, "%")) +
+  theme(legend.position="bottom",legend.title=element_blank(),legend.key = element_blank()) +
+  guides(fill=guide_legend(override.aes=list(shape=21))) +
+  ggtitle("18 hrs", subtitle = paste("P <", round(pvalue, 3), ";", "Variation =", 100*round(R2, 2), "%")) +
+  theme_bw() 
+
+
+
+
+##### Figure 1; Stick all together #####
+
+figure1 <- ggpubr::ggarrange(ggarrange(pcoa.unifrac.0hrs.new, 
+                  pcoa.unifrac.6hrs.new,
+                  pcoa.unifrac.12hrs.new, 
+                  pcoa.unifrac.18hrs.new, common.legend = T, nrow = 1, ncol = 4),
+                  ggarrange(sperm.0.ord.plot, 
+                  sperm.6.ord.plot,
+                  sperm.12.ord.plot, 
+                  sperm.18.ord.plot, common.legend = T, nrow = 1, ncol = 4, legend = F),
+                  labels = c("a", "b"), nrow = 2)
+
+
+
+
+
+
+
+
 
 
 
