@@ -9,14 +9,18 @@ library(metagenomeSeq)
 library(ggplot2)
 library(ggpubr)
 library(Biostrings)
+library(microbiome)
 
 ##### Set global options #####
 
 # no scientific notation
 options(scipen=10000) 
 
-# color blind pallet used throughout 
+# color blind pallets used throughout 
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+ibm.cbb <- c("#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000")
+tol.cbb <- c("#332288", "#117733", "#44AA99", "#88CCEE", "#DDCC77", "#CC6677", "#AA4499", "#882255")
+
 
 ########### Bacteria #####
 
@@ -49,7 +53,7 @@ FASTA.bac <- readDNAStringSet("Bacteria/otus_16s.fasta", format="fasta", seek.fi
 # Phylogentic tree #
 tree <- phyloseq::read_tree("Bacteria/otus_16s_midpoint.tre")
 
-###### Create a phyloseq object #####
+###### Create Initial Phyloseq object #####
 # Merge reads into Phyloseq object #
 bac.unedited <- phyloseq::phyloseq(OTU.bac, TAX.bac, FASTA.bac, SAMP.bac, tree)
 
@@ -68,9 +72,12 @@ ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample"
 # Make data.frame of prevalence in positive and negative samples
 df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
                     contaminant=contamdf.prev$contaminant)
-decontaminate <- ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
-  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)") + 
+decontaminate.bac <- ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + 
+  geom_point() +
+  xlab("Prevalence (Negative Controls)") + 
+  ylab("Prevalence (True Samples)") + 
   scale_color_manual(values = cbbPalette)+ 
+  ggtitle("Prokaryote") +
   theme_classic()
 
 goodTaxa <- setdiff(taxa_names(bac.unedited), badTaxa)
@@ -88,22 +95,24 @@ bac_no_chloro <- bac_sub_no_bad %>%
 # positive controls
 bac_mock <- bac_no_chloro %>% 
   subset_samples(Crop == "MOCK") %>%
-  phyloseq::filter_taxa(function(x) sum(x) > 1, TRUE) # filter OTUs to have more than 1 read in mock samples
+  phyloseq::filter_taxa(function(x) sum(x) > 2, TRUE) # filter OTUs to have more than 1 read in mock samples
 
 mock2 <- microbiome::transform(bac_mock, "compositional") # relative abundance transform
 
-sequenced.mock <- mock2 %>%
+sequenced.mock.bac <- mock2 %>%
   psmelt() %>% 
   ggplot(aes(Sample, Abundance, fill = Label)) +
   geom_bar(stat = "identity") +
   theme_classic() +
-  scale_fill_manual(values= c(cbbPalette, "violet", "pink", "grey", "black", "blue")) +
+  scale_fill_manual(values= c(cbbPalette, ibm.cbb, tol.cbb)) +
   scale_y_continuous(labels = scales::percent) +
   labs(x = "", y = "Relative abundance (%)",
-       title = "Sequenced") + 
+       title = "Prokaryote") + 
   theme(axis.text.x = element_text(angle=45, hjust=1),
-        legend.text = element_text(face = "italic"),
-        legend.title = element_blank()) 
+        legend.text = element_text(face = "italic", size = 5),
+        legend.title = element_blank(),
+        legend.key.size = unit(0.3, 'cm')) 
+sequenced.mock.bac
 
 # Adding in theoretical distribution - the last two are fungi and are not expected to be amplified with 16S
 Label <- c("Pseudomonas aeruginosa", 
@@ -181,44 +190,37 @@ bac_sperm <- readRDS(file = "Bacteria/Bacteria_spermosphere_nonnorm_112922.rds")
 ###### READS PER SAMPLE ######
 sample.sums <- sort.DataFrame(data.frame(sample_sums(bac_sperm)))
 
-read.dist <- ggplot(sample.sums, aes(x = sample_sums.bac_sperm.)) +
-  geom_histogram(color = "black") + 
+read.dist.bac <- ggplot(sample.sums, aes(x = sample_sums.bac_sperm.)) +
+  geom_histogram(color = "black", fill = cbbPalette[[4]]) + 
   theme_classic() +
-  xlab("Read Depth")
+  xlab("Read Depth") + 
+  ggtitle("Prokaryote")
 
 sum(sample_sums(bac_sperm)) # total reads = 2,090,814
 median(sample_sums(bac_sperm)) # 29237.5
 
 ###### Rarefaction analysis #####
 sam.data <- data.frame(bac_sperm@sam_data)
-bOTU.table <- bac_sperm@otu_table
-S <- specnumber(t(bOTU.table)) # observed number of species
+bOTU.table <- otu_table(bac_sperm) %>%
+  as.data.frame() %>%
+  as.matrix()
+  
 raremax <- min(rowSums(t(bOTU.table)))
-Srare <- rarefy(t(bOTU.table), raremax)
-rare.fun <- rarecurve(t(bOTU.table), step = 1000, sample = raremax, cex = 0.6)
+rare.fun <- rarecurve(t(bOTU.table), step = 1000, sample = raremax, tidy = T)
 
-bac.rare.curve.extract <- NULL
-for(i in 1:length(rare.fun)){
-  sample.200 <- data.frame(rare.spec = rare.fun[[i]])
-  sample.200$read_depth <- attr(rare.fun[[i]], "Subsample")
-  sample.200$Code <- rownames(t(bOTU.table[,i]))
-  bac.rare.curve.extract <- rbind.data.frame(bac.rare.curve.extract, sample.200)
-}
-bac.rare.curve.extract2 <- left_join(sam.data, bac.rare.curve.extract, by = "Code")
+bac.rare.curve.extract2 <- left_join(sam.data, rare.fun, by = c("Code" = "Site"))
 
-bac.rare <- ggplot(bac.rare.curve.extract2, aes(x = read_depth, y = rare.spec, group = Code, color = Crop)) + 
+bac.rare <- ggplot(bac.rare.curve.extract2, aes(x = Sample, y = Species, group = Code, color = Crop)) + 
   #geom_point() +
   geom_line() + 
   xlab("Reads") + 
-  ylab("Number of OTUs") + 
+  ylab("Number of OTUs") +
+  ggtitle("Prokaryote") +
   theme_classic() + 
   geom_vline(xintercept = median(sample_sums(bac_sperm)), linetype = "dashed") +
   scale_color_manual(values = cbbPalette)
 
-###### Supplemental Figure 1 ######
-ggpubr::ggarrange(bac.rare, decontaminate, read.dist, ggpubr::ggarrange(theory.mock, sequenced.mock), nrow = 2, ncol = 2, labels = c("a", "b", "c", "d"))
-
-####### Metagenome CSS normalization ######
+###### Metagenome CSS normalization ######
 MGS <- phyloseq_to_metagenomeSeq(bac_sperm) #converts to metagenomeseq format
 p <- metagenomeSeq::cumNormStatFast(MGS)
 MGS <- metagenomeSeq::cumNorm(MGS, p =p)
@@ -226,4 +228,198 @@ metagenomeSeq::normFactors(MGS) # exports the normalized factors for each sample
 norm.bac <- metagenomeSeq::MRcounts(MGS, norm = T) 
 norm.bac.OTU <- phyloseq::otu_table(norm.bac, taxa_are_rows = TRUE) #exports the new otu table
 bac.css.norm <- phyloseq::phyloseq(norm.bac.OTU, FASTA.bac, SAMP.bac, TAX.bac, tree) #new otu table phyloseq object
+
+
+
+########### Fungi #####
+
+###### Read in data ####
+
+#Loading the mapping file
+samp_dat <- read.csv("Fungi/METADATA.csv", na.strings = "NA")
+
+rownames(samp_dat) <- samp_dat$Code #row names must match OTU table headers
+SAMP.fungi <- phyloseq::sample_data(samp_dat)
+
+# OTU table 
+otu <- read.csv("Fungi/OTU_Table.csv")
+rownames(otu) <- otu$OTU
+otu <- otu[,-1]
+OTU.fungi <- phyloseq::otu_table(otu, taxa_are_rows = TRUE)
+
+any(is.na(otu)) # no NA in the OTU table
+
+# Taxonomy
+taxonomy.fungi <- read.csv("Fungi/fungal_taxonomy_DADA2_NBC.csv")
+rownames(taxonomy.fungi) <- taxonomy.fungi$OTU
+taxonomy.fungi2 <- taxonomy.fungi %>%
+  subset(Kingdom != "unidentified")
+
+TAX.fungi <- phyloseq::tax_table(as.matrix(taxonomy.fungi2))
+
+# Fasta
+FASTA.fungi <- readDNAStringSet("Fungi/otus_R1.fasta", format="fasta", seek.first.rec=TRUE, use.names=TRUE)
+
+###### Create Initial Phyloseq object ######
+fungi.unedited <- phyloseq::phyloseq(OTU.fungi, TAX.fungi, FASTA.fungi, SAMP.fungi)
+
+###### Decontaminate  ######
+fungi.unedited@sam_data$Sample_or_Control <- ifelse(fungi.unedited@sam_data$Crop == "NEC", "Control Sample", "True Sample")
+sample_data(fungi.unedited)$is.neg <- sample_data(fungi.unedited)$Sample_or_Control == "Control Sample"
+contamdf.prev <- isContaminant(fungi.unedited, method="prevalence", neg="is.neg", threshold = 0.1, normalize = TRUE)
+badTaxa <- rownames(contamdf.prev[contamdf.prev$contaminant == TRUE,])
+
+print(badTaxa)
+
+ps.pa <- transform_sample_counts(fungi.unedited, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control Sample", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "True Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                    contaminant=contamdf.prev$contaminant)
+decontaminate <- ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + 
+  geom_point() +
+  xlab("Prevalence (Negative Controls)") + 
+  ylab("Prevalence (True Samples)") + 
+  ggtitle("Fungi") +
+  theme_classic() + 
+  scale_color_manual(values = cbbPalette)
+
+goodTaxa <- setdiff(taxa_names(fungi.unedited), badTaxa)
+fungi_sub_no_bad <- prune_taxa(goodTaxa, fungi.unedited)
+
+###### Mock Community #######
+fungi_mock <- fungi_sub_no_bad %>% 
+  subset_samples(Crop == "MOCK") %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 2, TRUE)
+
+mock2 <- microbiome::transform(fungi_mock, "compositional") # relative abundance transform
+
+sequenced.mock.fungi <- mock2 %>%
+  psmelt() %>% 
+  ggplot(aes(Sample, Abundance, fill = Species)) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values= c(cbbPalette, ibm.cbb, tol.cbb, "violet", "pink", "grey", "black", "blue", "green")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "", y = "Relative abundance (%)",
+       title = "Fungi") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        legend.text = element_text(face = "italic", size = 5),
+        legend.title = element_blank(),
+        legend.key.size = unit(0.3, 'cm')) 
+sequenced.mock.fungi
+
+mock.composition <- mock2 %>%
+  psmelt() %>%
+  group_by(Kingdom, Phylum, Class, Order, Family, Genus, Species, Label) %>%
+  summarise(MeanRelAbund = mean(Abundance)) %>%
+  arrange(-MeanRelAbund) %>%
+  ungroup() %>%
+  group_by(Kingdom) %>%
+  summarise(SumAbund = sum(MeanRelAbund)) 
+mock.composition
+ 
+# OTUs classified into the mock kingdom made up 99.9% of the reads in mock samples
+
+fungi_not_mock <- fungi_sub_no_bad %>% 
+  subset_samples(Crop != "MOCK") %>%
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+
+not_mock <- microbiome::transform(fungi_not_mock, "compositional") # relative abundance transform
+
+not.mock.composition <- not_mock %>%
+  psmelt() %>%
+  group_by(Kingdom, Phylum, Class, Order, Family, Genus, Species, Label) %>%
+  summarise(MeanRelAbund = mean(Abundance)) %>%
+  arrange(-MeanRelAbund) %>%
+  ungroup() %>%
+  group_by(Kingdom) %>%
+  summarise(SumAbund = sum(MeanRelAbund)) %>%
+  arrange(-SumAbund)
+not.mock.composition
+sum(not.mock.composition$SumAbund[c(1,3:10)])
+
+# OTUs classified into the Fungal kingdom made up 98.8% of the reads in real samples
+
+###### Taxonomy and Sample filtering #####
+# remove OTUs that are not fungi, or unidentified at the kingdom level 
+fungi_sperm <- fungi_sub_no_bad %>% 
+  phyloseq::subset_taxa(Kingdom %in% c("Fungi")) %>%
+  subset_samples(Crop %in% c("Bulk Soil", "Cotton ", "Soybean") & Time.Point != "E") %>%
+  prune_samples(sample_sums(.) > 1000, .) %>% # remove samples below 1,000 reads
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE) # remove taxa not present in samples cut out
+
+###### RDS of Non-normalized Fungi data #####
+# Save an object to a file
+saveRDS(fungi_sperm, file = "Fungi/Fungi_spermosphere_unedited_083022.rds")
+# Restore the object
+fungi.obj1.unedited <- readRDS(file = "Fungi/Fungi_spermosphere_unedited_083022.rds")
+
+###### READS PER SAMPLE #######
+sample.sums <- sort.DataFrame(data.frame(sample_sums(fungi.obj1.unedited)))
+
+read.dist <- ggplot(sample.sums, aes(x = sample_sums.fungi.obj1.unedited.)) +
+  geom_histogram(color = "black", fill = cbbPalette[[4]]) + 
+  theme_classic() +
+  xlab("Read Depth") +
+  ylab("Number of samples") + 
+  ggtitle("Fungi")
+
+sum(taxa_sums(fungi.obj1.unedited)) # total reads = 2534301
+
+mean(sample_sums(fungi.obj1.unedited)) # 36729
+median(sample_sums(fungi.obj1.unedited)) # 37933 reads
+
+######## Rarefaction anlaysis ######## 
+sam.data <- data.frame(fungi.obj1.unedited@sam_data)
+fOTU.table <- otu_table(fungi.obj1.unedited) %>%
+  as.data.frame() %>%
+  as.matrix()
+rare.fun <- rarecurve(t(fOTU.table), step = 1000, sample = raremax, tidy = TRUE)
+
+fungi.rare.curve.extract2 <- left_join(rare.fun, sam.data, by = c("Site" = "Code"))
+
+fungi.rare <- ggplot(fungi.rare.curve.extract2, aes(x = Sample, y = Species, group = Site, color = Crop)) + 
+  #geom_point() +
+  scale_color_manual(values = cbbPalette)+
+  geom_line() + 
+  xlab("Reads") + 
+  ylab("Number of OTUs") + 
+  ggtitle("Fungi")+
+  theme_classic() + 
+  geom_vline(xintercept = 40212, linetype = "dashed") +
+  ggtitle("") 
+
+######### Metagenome CSS normalization #########
+MGS <- phyloseq_to_metagenomeSeq(fungi.obj1.unedited)
+p <- metagenomeSeq::cumNormStatFast(MGS)
+
+MGS <- metagenomeSeq::cumNorm(MGS, p =p)
+
+metagenomeSeq::normFactors(MGS) # exports the normalized factors for each sample
+
+norm.fungi <- metagenomeSeq::MRcounts(MGS, norm = T)
+
+norm.fungi.OTU <- phyloseq::otu_table(norm.fungi, taxa_are_rows = TRUE)
+
+fungi.css.norm <- phyloseq::phyloseq(norm.fungi.OTU, TAX.fungi, FASTA.fungi, SAMP.fungi)
+
+######## Save CSS object to a file ########
+saveRDS(fungi.css.norm, file = "SpermosphereFungi/Fungi_CSSNorm_083022.rds")
+# Restore the object
+fungi.css.norm <- readRDS(file = "SpermosphereFungi/Fungi_CSSNorm_083022.rds")
+
+
+###### Supplemental Figure 1 ######
+
+mock.combined <- ggpubr::ggarrange(sequenced.mock.bac, sequenced.mock.fungi, nrow = 1)
+rare.combined <- ggpubr::ggarrange(bac.rare, fungi.rare, nrow = 1, common.legend = T)
+decontaminate.combined <- ggpubr::ggarrange(decontaminate.bac, decontaminate, nrow = 1, common.legend = T)
+read.dist.combined <- ggpubr::ggarrange(read.dist.bac, read.dist, nrow = 1)
+
+supp.fig.1 <- ggpubr::ggarrange(mock.combined, 
+                                rare.combined, 
+                                decontaminate.combined, 
+                                read.dist.combined, nrow = 4, ncol = 1, labels = c("a", "b", "c", "d"))
 
