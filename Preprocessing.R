@@ -27,7 +27,7 @@ tol.cbb <- c("#332288", "#117733", "#44AA99", "#88CCEE", "#DDCC77", "#CC6677", "
 ###### Read in data ####
 
 # Metadata #
-samp_dat_bac <- read.csv("Bacteria/spermospheremetadata.csv", na.strings = "NA")
+samp_dat_bac <- read.csv("Bacteria/spermospheremetadata.csv", na.strings = "na")
 
 rownames(samp_dat_bac) <- samp_dat_bac$Code #row names must match OTU table headers
 SAMP.bac <- phyloseq::sample_data(samp_dat_bac)
