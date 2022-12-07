@@ -229,6 +229,9 @@ norm.bac <- metagenomeSeq::MRcounts(MGS, norm = T)
 norm.bac.OTU <- phyloseq::otu_table(norm.bac, taxa_are_rows = TRUE) #exports the new otu table
 bac.css.norm <- phyloseq::phyloseq(norm.bac.OTU, FASTA.bac, SAMP.bac, TAX.bac, tree) #new otu table phyloseq object
 
+saveRDS(bac.css.norm, file = "Bacteria/Bacteria_spermosphere_CSS_112922.rds")
+# Restore the object
+bac.css.norm <- readRDS(file = "Bacteria/Bacteria_spermosphere_CSS_112922.rds")
 
 
 ########### Fungi #####
@@ -406,9 +409,9 @@ norm.fungi.OTU <- phyloseq::otu_table(norm.fungi, taxa_are_rows = TRUE)
 fungi.css.norm <- phyloseq::phyloseq(norm.fungi.OTU, TAX.fungi, FASTA.fungi, SAMP.fungi)
 
 ######## Save CSS object to a file ########
-saveRDS(fungi.css.norm, file = "SpermosphereFungi/Fungi_CSSNorm_083022.rds")
+saveRDS(fungi.css.norm, file = "Fungi/Fungi_CSSNorm_083022.rds")
 # Restore the object
-fungi.css.norm <- readRDS(file = "SpermosphereFungi/Fungi_CSSNorm_083022.rds")
+fungi.css.norm <- readRDS(file = "Fungi/Fungi_CSSNorm_083022.rds")
 
 
 ###### Supplemental Figure 1 ######
