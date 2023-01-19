@@ -28,32 +28,32 @@ Description of R scripts
     │   ├── differential_abund_121422.rds
     │   └── differential_abund_alloutput_121422.rds
     ├── Figures
-    │   ├── Main Figures
-    │   │   ├── PDF
-    │   │   │   ├── Figure1_method.pdf
-    │   │   │   ├── Figure2_imbibitiondiversity.pdf
-    │   │   │   ├── Figure3_composition_top_20.pdf
-    │   │   │   ├── Figure4_PCOA.pdf
-    │   │   │   ├── Figure5_Diff_abundance2.pdf
-    │   │   │   └── Figure6_Networks2.pdf
-    │   │   └── PNG
-    │   │       ├── Figure1_method.png
-    │   │       ├── Figure2_imbibitiondiversity.png
-    │   │       ├── Figure3_composition_top_20.png
-    │   │       ├── Figure4_PCOA.png
-    │   │       ├── Figure5_Diff_abundance2.png
-    │   │       └── Figure6_Networks2.png
-    │   ├── SupplementalFigures
-    │   │   ├── PDF
-    │   │   │   ├── SupplementalFig1_PreliminaryLogCFU.pdf
-    │   │   │   ├── SupplementalFig2_SequencingPerformance_120522.pdf
-    │   │   │   ├── SupplementalFig3.pdf
-    │   │   │   └── SupplementalFig4_composition_top_20_fungi.pdf
-    │   │   └── PNG
-    │   │       ├── SupplementalFig1_PreliminaryLogCFU.png
-    │   │       ├── SupplementalFig2_SequencingPerformance_120522.png
-    │   │       ├── SupplementalFig3.png
-    │   │       └── SupplementalFig4_composition_top_20_fungi.png
+     ├── Main Figures
+    │   ├── PDF
+    │   │   ├── Figure1_method.pdf
+    │   │   ├── Figure2_imbibitiondiversity.pdf
+    │   │   ├── Figure3_composition_top_20.pdf
+    │   │   ├── Figure4_PCOA.pdf
+    │   │   ├── Figure5_Diff_abundance2.pdf
+    │   │   └── Figure6_Networks2.pdf
+    │   └── PNG
+    │       ├── Figure1_method.png
+    │       ├── Figure2_imbibitiondiversity.png
+    │       ├── Figure3_composition_top_20.png
+    │       ├── Figure4_PCOA.png
+    │       ├── Figure5_Diff_abundance2.png
+    │       └── Figure6_Networks2.png
+    ├── SupplementalFigures
+         ├── PDF
+         │   ├── SupplementalFig1_PreliminaryLogCFU.pdf
+         │   ├── SupplementalFig2_SequencingPerformance_120522.pdf
+         │   ├── SupplementalFig3.pdf
+         │   └── SupplementalFig4_composition_top_20_fungi.pdf
+         └── PNG
+           ├── SupplementalFig1_PreliminaryLogCFU.png
+           ├── SupplementalFig2_SequencingPerformance_120522.png
+           ├── SupplementalFig3.png
+           └── SupplementalFig4_composition_top_20_fungi.png
     ├── Fungi
     │   ├── Fungi_CSSNorm_083022.rds
     │   ├── Fungi_spermosphere_unedited_083022.rds
