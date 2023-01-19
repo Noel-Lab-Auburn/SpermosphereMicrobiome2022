@@ -177,7 +177,7 @@ sum(mock.composition[1:8,]$MeanRelAbund)
 bac_sperm_noE <- bac_no_chloro %>% 
   subset_samples(Time.Point %in% c("0", "6", "12", "18")) %>%
   prune_samples(sample_sums(.) > 10000, .) %>% # remove samples below 10,000 reads
-  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE) # remove taxa with less than 1 reads (i.e., those not present in objective 1)
+  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE) # remove taxa with less than 1 reads
 
 bac_sperm <- subset_samples(bac_sperm_noE, Code != "S185_86")
 
@@ -294,7 +294,7 @@ fungi_sub_no_bad <- prune_taxa(goodTaxa, fungi.unedited)
 ###### Mock Community #######
 fungi_mock <- fungi_sub_no_bad %>% 
   subset_samples(Crop == "MOCK") %>%
-  phyloseq::filter_taxa(function(x) sum(x) > 2, TRUE)
+  phyloseq::filter_taxa(function(x) sum(x) > 1, TRUE)
 
 mock2 <- microbiome::transform(fungi_mock, "compositional") # relative abundance transform
 
@@ -327,7 +327,7 @@ mock.composition
 
 fungi_not_mock <- fungi_sub_no_bad %>% 
   subset_samples(Crop != "MOCK") %>%
-  phyloseq::filter_taxa(function(x) sum(x) > 0, TRUE)
+  phyloseq::filter_taxa(function(x) sum(x) > 1, TRUE)
 
 not_mock <- microbiome::transform(fungi_not_mock, "compositional") # relative abundance transform
 
@@ -391,7 +391,7 @@ fungi.rare <- ggplot(fungi.rare.curve.extract2, aes(x = Sample, y = Species, gro
   ylab("Number of OTUs") + 
   ggtitle("Fungi")+
   theme_classic() + 
-  geom_vline(xintercept = 40212, linetype = "dashed") +
+  geom_vline(xintercept = median(sample_sums(fungi.obj1.unedited)), linetype = "dashed") +
   ggtitle("") 
 
 ######### Metagenome CSS normalization #########
