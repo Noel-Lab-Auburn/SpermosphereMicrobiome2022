@@ -1,4 +1,4 @@
-################ Indicator and Core ############
+################ Differential Abundance ############
 
 ###### Libraries #####
 library(phyloseq)
