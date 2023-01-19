@@ -1,0 +1,195 @@
+################ Differential Abundance ############
+
+###### Libraries #####
+library(phyloseq)
+library(microbiome)
+library(vegan)
+library(tidyverse)
+library(ggplot2)
+library(minpack.lm)
+library(Hmisc)
+library(stats4)
+library(ggrepel)
+library(ANCOMBC)
+library(ggVennDiagram)
+library(VennDiagram)
+
+# set options for scientific numbers to not be displayed
+options(scipen=10000) 
+
+# color blind pallet used throughout 
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+ibm.cbb <- c("#648FFF", "#785EF0", "#DC267F", "#FE6100", "grey")
+tol.cbb <- c("#332288", "#117733", "#44AA99", "#88CCEE", "#DDCC77", "#CC6677", "#AA4499", "#882255")
+
+#### Read in RDS file #### 
+# using the non-normalized reads since spieceasi has its own normalizaiton methods
+bac_sperm <- readRDS(file = "Bacteria/Bacteria_spermosphere_nonnorm_112922.rds")
+fungi_sperm <- readRDS(file = "Fungi/Fungi_spermosphere_unedited_083022.rds")
+
+#### taxonomy table ####
+tax.bac <- bac_sperm %>%
+  tax_table() %>%
+  as.data.frame()
+
+#### diff abundance with ancom-BC2 - don't need to run. load the RDS file ####
+
+# I am doing diff abundance testing with 12 and 18 hours since there was no effect of time between these two time points. 
+# In other words 12 and 18 were similar composition after 12 hours. 
+
+bac.tax.12.18 <- bac_sperm %>%
+  phyloseq::subset_samples(Time.Point %in% c("12", "18")) 
+
+# takes a while to finish -  maybe 30 min
+out = ancombc2(data = bac.tax.12.18, 
+              assay_name = NULL,
+              p_adj_method = "holm", 
+              prv_cut = 0.50, 
+              fix_formula = "Crop",
+              group = "Crop", 
+              struc_zero = TRUE, 
+              neg_lb = TRUE, 
+              alpha = 0.05, 
+              global = TRUE, 
+              n_cl = 1, verbose = TRUE)
+
+saveRDS(out, "differential_abund_alloutput_121422.rds")
+
+####### diff abundance test #####
+diff.abund <- out$res
+diff.abund2 <- left_join(diff.abund, tax.bac, by = c("taxon" = "OTU"))
+diff.abund2$diff_abund <- interaction(diff.abund2$`diff_CropCotton `, diff.abund$diff_CropSoybean)
+
+diff.abund2$Crop_diff_abund <- ifelse(diff.abund2$diff_abund == "TRUE.TRUE", "Soybean and Cotton", 
+                                      ifelse(diff.abund2$diff_abund == "TRUE.FALSE", "Cotton only",
+                                             ifelse(diff.abund2$diff_abund == "FALSE.TRUE", "Soybean only", "Not different")))
+
+saveRDS(diff.abund2, "differential_abund_121422.rds")
+diff.abund2 <- readRDS("differential_abund_121422.rds")
+
+# supplemental table 2
+write.csv(diff.abund2, "diff_abund.csv")
+
+diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different") %>%
+  group_by(Phylum) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n), 2))
+  
+diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different" & Phylum == "Firmicutes") %>%
+  group_by(Genus) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n), 2)) %>%
+  arrange(-freq)
+
+diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different" & Phylum == "Proteobacteria") %>%
+  group_by(Genus) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n), 2)) %>%
+  arrange(-freq)
+
+diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different") %>%
+  group_by(Crop_diff_abund) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n), 2)) %>%
+  arrange(-freq)
+
+diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different" & Phylum == "Proteobacteria") %>%
+  group_by(Label) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n), 2)) %>%
+  arrange(-freq) %>%
+  print(n = 50)
+
+
+diff.aubndant.composition <- diff.abund2 %>%
+  subset(Crop_diff_abund != "Not different") %>%
+ggplot(aes(x = Crop_diff_abund, fill = Genus)) +
+  geom_bar() +
+  scale_fill_manual(values = c(cbbPalette, ibm.cbb, tol.cbb)) +
+  theme_classic() + 
+  xlab("")+
+  ylab("Count") +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        legend.text = element_text(face = "italic", size = 5),
+        legend.title = element_blank(),
+        legend.key.size = unit(0.3, 'cm')) 
+
+
+# TRUE.TRUE = cotton and soybean 
+# TRUE.FALSE = cotton only 
+# FALSE.TRUE = soybean only
+
+diff.abund.plot <- ggplot() + 
+  geom_point(data = subset(diff.abund2, diff_abund == "FALSE.FALSE"), aes(x = lfc_CropSoybean, y = `lfc_CropCotton `), color = "grey", shape = 21) +
+  geom_point(data = subset(diff.abund2,  diff_abund == "TRUE.FALSE"), aes(x = lfc_CropSoybean, y = `lfc_CropCotton `, fill = Order, size = -log10(`q_CropCotton `)), shape = 22, alpha = 0.7) +
+  geom_point(data = subset(diff.abund2,  diff_abund == "FALSE.TRUE"), aes(x = lfc_CropSoybean, y = `lfc_CropCotton `, fill = Order, size = -log10(q_CropSoybean)), shape = 23, alpha = 0.7) +
+  geom_point(data = subset(diff.abund2,  diff_abund == "TRUE.TRUE"), aes(x = lfc_CropSoybean, y = `lfc_CropCotton `, fill = Order, size = -log10(q_CropSoybean)), shape = 24, alpha = 0.7) +
+  theme_classic() + 
+  geom_hline(yintercept = 0, lty = "dotted") +
+  geom_vline(xintercept = 0, lty = "dotted") + 
+  scale_fill_manual(values = c(cbbPalette, ibm.cbb, tol.cbb)) + 
+  xlab("log fold change soybean - soil") + 
+  ylab("log fold change cotton - soil") +
+  guides(size = FALSE) + 
+  theme(legend.position = "right")
+  #geom_text_repel(data = subset(diff.abund2,  diff_abund == "TRUE.TRUE"), 
+                  #aes(label = Label, x = lfc_CropSoybean, y = `lfc_CropCotton `, fill = Phylum), size = 3)
+
+
+
+ggarrange(diff.abund.plot, diff.aubndant.composition)
+
+
+
+# NOT INCLUDED IN MANUSCRIPT # 
+
+# The following analysis was tempting to conclude that those unique to the soybean or cotton spermosphere were seed asscoaited. 
+#But we have not way to control for false positives. In other words, maybe they were present in only the soils that were used for soybean spermosphre collection. 
+#While, possible, we cannot rule it out and need further evidence to suggest that they are seed associated. But explore as you wish!! 
+
+
+########## Those unique to each crop ####### 
+
+bac_sperm %>%
+  psmelt() %>%
+  group_by(Label, Crop, Time.Point) %>%
+  summarise(Sum.Abund = sum(Abundance)) %>%
+  pivot_wider(names_from = c(Crop, Time.Point), values_from = Sum.Abund) %>%
+  filter(Soybean_0 == 0 & 
+           Soybean_6 == 0 &
+         `Bulk Soil_0` == 0 &
+         `Bulk Soil_6` == 0 &
+         `Bulk Soil_12` == 0 &
+         `Bulk Soil_18` == 0 &
+         `Cotton _0` == 0 &
+         `Cotton _6` == 0 &
+         `Cotton _12` == 0 &
+         `Cotton _18` == 0) %>%
+  select(Soybean_12, Soybean_18)
+
+bac_sperm %>%
+  psmelt() %>%
+  group_by(Label, Crop, Time.Point) %>%
+  summarise(Sum.Abund = sum(Abundance)) %>%
+  pivot_wider(names_from = c(Crop, Time.Point), values_from = Sum.Abund) %>%
+  filter(Soybean_0 == 0 & 
+           Soybean_6 == 0 &
+           Soybean_12 == 0 &
+         Soybean_18 == 0 &
+           `Bulk Soil_0` == 0 &
+           `Bulk Soil_6` == 0 &
+           `Bulk Soil_12` == 0 &
+           `Bulk Soil_18` == 0 &
+           `Cotton _0` == 0 &
+           `Cotton _6` == 0 &
+           `Cotton _12` > 0 &
+           `Cotton _18` > 0) 
+  
+  
+
+
