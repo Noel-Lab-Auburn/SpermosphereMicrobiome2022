@@ -6,11 +6,11 @@ R scripts are found within the R scripts directory
 
 
 Description of R scripts 
-1. [R_Scripts/Preprocessing.R](R_Scripts/Preprocessing.R) - run this script first since it generates input data for the rest of the    scirpts 
-2. [R_Scripts/Diversity.R](R_Scripts/Diversity.R) - general microbial diversity statistics 
-3. [R_Scripts/diff_abund.R](R_Scripts/diff_abund.R) - differential abundance analysis 
-4. [R_Scripts/NetworkResultsPlot.R](R_Scripts/NetworkResultsPlot.R)- generating and plotting networks. 
-5. [R_Scripts/transmission_analysis.R](R_Scripts/transmission_analysis.R) - Not actually in the         manuscript, but attempts to find OTUs only present in certain samples. this study was not really designed for this analysis, but still fun to look through! 
+1. [Preprocessing](R_Scripts/Preprocessing.R) - run this script first since it generates input data for the rest of the    scirpts 
+2. [Diversity](R_Scripts/Diversity.R) - general microbial diversity statistics 
+3. [diff_abund](R_Scripts/diff_abund.R) - differential abundance analysis 
+4. [Network](R_Scripts/NetworkResultsPlot.R)- generating and plotting networks. 
+5. [Transmission Analysis](R_Scripts/transmission_analysis.R) - Not actually in the         manuscript, but attempts to find OTUs only present in certain samples. this study was not really designed for this analysis, but still fun to look through! 
 
 .
 └── SpermosphereMicrobiome2022
