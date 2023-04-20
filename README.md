@@ -1,5 +1,8 @@
 [![DOI](https://zenodo.org/badge/507763435.svg)](https://zenodo.org/badge/latestdoi/507763435)
 
+This repository is under a [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) license. This means it is free to use with citation. Please cite the zenodo DOI above. Full license information can be found in the [LICENSE](LICENSE) file
+
+
 # SpermosphereMicrobiome2022
 Everything data analysis for the spermosphere microbiome of cotton and soybean!
 
